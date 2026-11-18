@@ -23,7 +23,7 @@ and decides.
 7. [Using it yourself, without Claude](#7-using-it-yourself-without-claude)
 8. [Files and folders](#8-files-and-folders)
 9. [Limits and known issues](#9-limits-and-known-issues)
-10. [Copyright](#10-copyright)
+10. [Copyright, terms and licenses](#10-copyright-terms-and-licenses)
 
 ---
 
@@ -48,7 +48,33 @@ because it's by far the biggest file. Transcripts and clip data stay, so a later
 
 ## 2. Setup
 
-You need **Python 3.10+**, **ffmpeg** and **Node.js 18+** installed. Then, once:
+### Install the skill
+
+Claude Code loads skills from `~/.claude/skills/`. Clone this repository there:
+
+```bash
+# macOS / Linux
+git clone https://github.com/justkalesh/video-clipper-skill.git ~/.claude/skills/video-clipper
+```
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/justkalesh/video-clipper-skill.git "$env:USERPROFILE\.claude\skills\video-clipper"
+```
+
+Start a new Claude Code session afterwards. The skill shows up as `video-clipper`, and Claude uses it whenever
+you ask for clips. To update it later, run `git pull` in that folder.
+
+### Install what it needs
+
+You need **Python 3.10+**, **ffmpeg** and **Node.js 18+** on your PATH:
+
+| | Windows | macOS | Linux (Debian/Ubuntu) |
+|---|---|---|---|
+| Python | python.org installer | `brew install python` | `sudo apt install python3 python3-pip` |
+| ffmpeg | `winget install ffmpeg` | `brew install ffmpeg` | `sudo apt install ffmpeg` |
+| Node.js | `winget install OpenJS.NodeJS.LTS` | `brew install node` | nodejs.org or `nvm` |
+
+Then, once, from the skill folder:
 
 ```bash
 python scripts/setup.py --install                  # Python packages + the Remotion render project (a few minutes)
@@ -56,7 +82,8 @@ python scripts/setup.py --install --with-whisper   # also: transcribe videos tha
 python scripts/setup.py --install --with-youtube   # also: upload to YouTube
 ```
 
-`setup.py` without flags just reports what's present and what's missing.
+`setup.py` without flags just reports what's present and what's missing. The Python packages are also listed in
+`requirements.txt` if you prefer `pip install -r requirements.txt`. On macOS/Linux the command may be `python3`.
 
 **To post to YouTube**, connect your channel once. You create a free Google Cloud project, turn on the YouTube Data
 API and sign in. Step-by-step instructions are in [`references/youtube.md`](references/youtube.md). Claude walks you
@@ -400,22 +427,54 @@ video-clipper/                     the skill
 
 ## 9. Limits and known issues
 
+### What has been tested
+
+| Status | What |
+|---|---|
+| Tested end to end | Windows 11, Python 3.14, Node.js 24, NVIDIA laptop GPU |
+| Tested sources | a Hindi webcam-panel/reaction video (2×2, 3- and 5-webcam layouts, phone memes, Hinglish captions); an English gameplay breakdown (letterboxed game footage, no facecam) |
+| Tested output | vertical and square; karaoke and pop captions; fire and gold colours; title top and split; progress bar; end card; .srt; loudness levelling; scheduling maths; upload dry run; source cleanup |
+| Not tested yet | macOS and Linux; real YouTube uploads; Whisper transcription; facecam over gameplay and two people in one camera shot on real footage; line and boxed captions; horizontal and portrait shapes; logo, background music, section downloads, translated (phrases) captions |
+
+Reports and fixes for the untested parts are very welcome.
+
+### Known limits
+
 - **Faces** come from OpenCV's frontal detector. Side profiles, masks, heavy shadow and tiny faces can be missed,
   and the shot then falls back to the centre or the whole picture. Claude checks the contact sheets and fixes by
   hand.
 - **"Speaker" focus** means the biggest face. There is no active-speaker detection yet.
 - **Live streams** are not clipped while live. Clip them once they've finished.
-- **Fonts**: system fonts and Google Fonts work. Google Fonts need internet at render time.
+- **Fonts**: the default is Montserrat (a Google Font), which looks the same on every OS. Google Fonts need
+  internet at render time; offline, captions fall back to Segoe UI Black / Arial Black / Arial.
 - **Rendering time**: about 2–3 min per 40 s clip at 24 fps, a bit more at 30 fps, and roughly 2.5× that at 60 fps.
 - **Best posting times** are general peaks, not your channel's analytics.
 
-## 10. Copyright
+## 10. Copyright, terms and licenses
 
-Posting clips of someone else's video can get Content ID claims, copyright strikes (three in 90 days and the channel
-is deleted), and demonetisation under YouTube's "reused content" rule. The safe cases:
+**Your responsibility.** This tool cuts, captions and uploads video. Whether you may do that with a given video is
+up to you and the rights holder, not the tool.
+
+**Clipping other people's videos.** Posting clips of someone else's video can lead to:
+- Content ID claims
+- copyright strikes (three in 90 days and the channel is deleted)
+- demonetisation under YouTube's "reused content" rule
+
+The safe cases:
 - your own videos
 - creators who allow or pay for clipping
 - written permission
 
 The skill asks about permission before uploading, keeps uploads private for review by default, and credits the
 original in every description. Captions and reframing don't make a reupload safe on their own.
+
+**Downloading.** Videos are fetched with [yt-dlp](https://github.com/yt-dlp/yt-dlp). Downloading from YouTube and
+other sites may be against their terms of service. Use it for content you have the right to download (your own
+uploads, Creative Commons, permission), or give the skill a local file instead.
+
+**Remotion's license.** Clips are rendered with [Remotion](https://www.remotion.dev). Remotion is free for
+individuals, for-profit companies of up to 3 people, and non-profits. Larger companies need a paid
+[company license](https://www.remotion.pro/license). This skill's MIT license doesn't cover Remotion: check
+which case you're in.
+
+**This skill** is released under the [MIT License](LICENSE).

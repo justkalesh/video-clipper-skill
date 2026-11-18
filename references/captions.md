@@ -38,8 +38,8 @@ python -c "import json,sys; sys.stdout.reconfigure(encoding='utf-8'); w=json.loa
 ### 3. A phrases file (`captions_N.phrases.txt`): translations
 When the caption words don't map 1:1 onto spoken words, write timed lines in the original video's time:
 ```
-1100.4-1103.1 | Genuinely, you believe in ghosts, Sood?
-1103.2-1108.2 | Yes! We went to a friend's village and the *same* witch threw eggs at our car
+1100.4-1103.1 | Wait, you genuinely believe in ghosts?
+1103.2-1108.2 | Yes! We went to a friend's village and the *same* ghost threw eggs at our car
 ```
 Words are spread across each line by length. Keep lines short (one breath) so the timing stays close.
 
@@ -52,7 +52,8 @@ Write it the way people actually type it on Instagram and YouTube in India:
   matlab, waise, bahut, zyada, kuch, sab, sach, abhi, phir, lekin, kyunki, chahiye, raha/rahi/rahe, gaya, hua.
 - Drop the silent final "a" (कर → kar, not kara). Use "aa/ee/oo" only where the long vowel matters
   (aana, jeena, doosra).
-- Names and brands in their usual spelling: Sood, Kullu, Bella Vita, DigiYatra, Kung Fu Panda.
+- Names and brands in their usual spelling (people's names as they write them, brand names as the brand
+  writes them: "DigiYatra", "Kung Fu Panda").
 - Fix what auto captions mishear when the context makes it clear (in one test: "नकली एलएसटी" → nakli LSD,
   "शैल" → Shein, "काफी कुमकुम मूवी" → Kung Fu Panda movie). If unsure, keep the closest plain reading.
 - Keep slang and swearing as spoken unless `censor` is on. With `censor: mask`, write it masked in the tokens

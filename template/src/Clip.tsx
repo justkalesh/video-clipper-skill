@@ -93,7 +93,7 @@ export const DEMO: ClipData = {
     monoGrow: false,
     caseMode: "as_spoken",
     captionPosition: "auto",
-    font: "Segoe UI Black",
+    font: "Montserrat",
     fontSize: 108,
     titleShow: true,
     titlePosition: "top",
@@ -246,7 +246,7 @@ const Title: React.FC<{ data: ClipData; y: number; scale: number }> = ({ data, y
         style={{
           background: s.titleBg,
           color: s.titleText,
-          fontFamily: `'${s.font}', 'Segoe UI Black', 'Arial Black', sans-serif`,
+          fontFamily: `'${s.font}', 'Montserrat', 'Segoe UI Black', 'Arial Black', 'Helvetica Neue', Arial, sans-serif`,
           fontWeight: 900,
           fontSize: 50 * scale,
           padding: `${16 * scale}px ${34 * scale}px`,
@@ -304,7 +304,7 @@ const Captions: React.FC<{ data: ClipData; y: number; scale: number }> = ({ data
           flexWrap: "wrap",
           justifyContent: "center",
           gap: `0 ${size * (line ? 0.25 : 0.28)}px`,
-          fontFamily: `'${s.font}', 'Segoe UI Black', 'Arial Black', sans-serif`,
+          fontFamily: `'${s.font}', 'Montserrat', 'Segoe UI Black', 'Arial Black', 'Helvetica Neue', Arial, sans-serif`,
           fontWeight: 900,
           fontStyle: page.marker ? "italic" : "normal",
           fontSize: size,
@@ -385,7 +385,7 @@ const EndCard: React.FC<{ text: string; data: ClipData; scale: number }> = ({ te
       <div
         style={{
           color: "#fff",
-          fontFamily: `'${data.style.font}', 'Segoe UI Black', 'Arial Black', sans-serif`,
+          fontFamily: `'${data.style.font}', 'Montserrat', 'Segoe UI Black', 'Arial Black', 'Helvetica Neue', Arial, sans-serif`,
           fontWeight: 900,
           fontSize: 84 * scale,
           textAlign: "center",

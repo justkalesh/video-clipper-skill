@@ -61,7 +61,7 @@ Use what fits this clip. Never copy titles or hashtags that don't describe it.
 - `punchline`: lead with the funniest or most shocking line, made understandable out of context.
 - `question`: one the clip answers ("Can you date someone 20 years older?").
 - `quote`: the best line from the clip, in quotes, plus who said it if they're known.
-- `descriptive`: plain and searchable ("Rajat Explains Why Lemon Grows a Beard").
+- `descriptive`: plain and searchable ("Why Lemon Juice Doesn't Grow a Beard").
 - Put the strongest words in the first ~40 characters (phones cut the rest). Use the language viewers search in.
 - At most one emoji (`emoji_in_title`). No ALL CAPS titles.
 

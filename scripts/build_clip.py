@@ -151,7 +151,7 @@ def style_of(s):
         "monoGrow": scheme == "mono",
         "caseMode": s.get("caption_case", "as_spoken"),
         "captionPosition": s.get("caption_position", "auto"),
-        "font": s.get("font", "Segoe UI Black") or "Segoe UI Black",
+        "font": s.get("font", "Montserrat") or "Montserrat",
         "fontSize": float(s.get("font_size", 108) or 108),
         "titleShow": bool(s.get("title", True)),
         "titlePosition": title_pos if title_pos in ("top", "split", "bottom") else "top",

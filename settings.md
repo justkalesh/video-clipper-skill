@@ -96,7 +96,8 @@ max_caption_chars: 16         # longer groups get split so captions never wrap o
 caption_case: as_spoken       # as_spoken | upper | lower
 caption_position: auto        # auto = clear of faces and on-screen action (on the split line for split views)
                               # top | middle | bottom
-font: "Segoe UI Black"        # any installed font or Google Font name
+font: "Montserrat"            # any Google Font name (loaded at render time, works on every OS) or an installed font
+                              # e.g. "Anton", "Bebas Neue", "Poppins", or "Segoe UI Black" (Windows only)
 font_size: 108                # px at 1080 wide
 remove_fillers: true          # drop "umm", "uh", repeated stutters
 emphasis_words: true          # key words get the accent colour even when they aren't being spoken

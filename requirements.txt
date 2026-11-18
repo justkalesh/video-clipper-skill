@@ -1,0 +1,12 @@
+# Required
+yt-dlp
+opencv-python-headless<5   # OpenCV 5 removed the Haar face detector the layout analysis uses
+numpy
+
+# Optional: transcribe videos that have no subtitles
+faster-whisper
+
+# Optional: upload to YouTube
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2

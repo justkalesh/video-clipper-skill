@@ -1,0 +1,5 @@
+# Keep LF line endings in the repository so macOS/Linux users get clean files
+* text=auto eol=lf
+*.jpg binary
+*.png binary
+*.mp4 binary

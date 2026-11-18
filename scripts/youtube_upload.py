@@ -7,7 +7,7 @@ One-time setup (the channel owner does this; see references/youtube.md):
 Uploading:
   python youtube_upload.py upload out/clips/x/1_title.mp4 --meta out/clips/x/1_title.meta.json [--dry-run]
   python youtube_upload.py publish <video_id> --privacy public               # after the owner approves a private upload
-  python youtube_upload.py publish <video_id> --at 2026-11-20T18:00:00+05:30 # schedule it instead
+  python youtube_upload.py publish <video_id> --at 2026-11-20T18:00:00+00:00 # schedule it instead
   python youtube_upload.py schedule --count 5 --settings run_settings.json   # print publish times for N clips
 
 The .meta.json file (written by Claude per clip):
