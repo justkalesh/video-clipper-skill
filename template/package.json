@@ -1,0 +1,17 @@
+{
+  "name": "video-clipper-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion project the video-clipper skill renders clips with. Managed by scripts/setup.py.",
+  "dependencies": {
+    "@remotion/cli": "4.0.540",
+    "@remotion/media": "4.0.540",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.540"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}
