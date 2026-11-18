@@ -275,7 +275,10 @@ Every decision is written to `shots_N.json`, which can be edited by hand.
 - **checks** size, length and audio, and makes an 8-frame contact sheet
 
 Claude looks at every contact sheet, checking faces, layout choice, captions over faces and wrapping. It fixes and
-re-renders any clip that's off. Frame rate follows the source by default, so motion doesn't stutter.
+re-renders any clip that's off.
+
+Frame rate defaults to **at most 30 fps**: a 60 fps source renders at 30, about twice as fast, and a 24/25 fps
+source keeps its own rate, because raising it would make motion stutter.
 
 ### 6.6 Titles, descriptions, hashtags
 - **Trend research** (`trend_research: on`):
@@ -403,7 +406,7 @@ video-clipper/                     the skill
 - **"Speaker" focus** means the biggest face. There is no active-speaker detection yet.
 - **Live streams** are not clipped while live. Clip them once they've finished.
 - **Fonts**: system fonts and Google Fonts work. Google Fonts need internet at render time.
-- **Rendering time**: about 2–3 min per 40 s clip at 24 fps, roughly 2.5× that at 60 fps.
+- **Rendering time**: about 2–3 min per 40 s clip at 24 fps, a bit more at 30 fps, and roughly 2.5× that at 60 fps.
 - **Best posting times** are general peaks, not your channel's analytics.
 
 ## 10. Copyright

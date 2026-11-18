@@ -53,7 +53,10 @@ avoid_explicit: false         # true = skip moments built on sexual content, slu
 orientation: vertical         # vertical (9:16, Reels/Shorts/TikTok) | portrait (4:5) | square (1:1)
                               # | horizontal (16:9)
 resolution: 1080              # short side in pixels: 720 | 1080 | 1440
-fps: source                   # source (match the original) | 30 | 60
+fps: 30                       # 30 = at most 30: renders ~2x faster than 60; a 24/25 fps source keeps its own
+                              #      rate (converting 24 -> 30 would make motion stutter)
+                              # 60 = at most 60: smoothest gameplay, slowest render
+                              # source = always the original's rate
 angle_mode: auto              # auto   = split the screen only when it helps (2+ people, facecam + gameplay,
                               #          speaker + slides); one view otherwise
                               # multi  = split whenever the frame has more than one subject

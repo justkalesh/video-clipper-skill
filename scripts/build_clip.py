@@ -198,7 +198,8 @@ def main():
     offset = float(shots.get("offset", 0.0))
     src_fps = float(shots["source"]["fps"]) or 30
     fps_set = s.get("fps", "source")
-    fps = round(src_fps) if fps_set in ("source", None, "") else int(fps_set)
+    # a number is a cap: never invent frames (24 -> 30 stutters), only drop them (60 -> 30 renders twice as fast)
+    fps = round(src_fps) if fps_set in ("source", None, "") else min(int(fps_set), round(src_fps))
     dur = round((end - start) * fps)
 
     segs = []

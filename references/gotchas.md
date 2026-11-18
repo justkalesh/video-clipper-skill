@@ -7,7 +7,7 @@
 | `UnicodeEncodeError: 'charmap' codec` when printing Hindi | Windows console defaults to cp1252 | scripts call `utf8()`; for one-off `python -c`, add `sys.stdout.reconfigure(encoding='utf-8')` |
 | `HTTP Error 429` fetching subtitles | YouTube rate-limits caption downloads, worse when fetching several languages | fetch only the original track; fetch.py retries with backoff |
 | ffmpeg `drawtext` crashes with "Fontconfig error" on Windows | no fontconfig config | don't burn text with ffmpeg; Remotion draws all text |
-| Choppy or stuttering motion | output fps differs from the source (e.g. 30 fps output from 24 fps source) | `fps: source` (the default) |
+| Choppy or stuttering motion | output fps higher than the source's (e.g. 30 fps output from a 24 fps source) | a number in `fps` is a cap (the default 30 keeps 24/25 fps sources as they are); `fps: source` always matches |
 | A meme or phone video framed as a webcam | its background wasn't dark enough to read as a divider | the threshold is dark grey (< 50/255). Fix the shot by hand (references/layouts.md) |
 | Dark game/film scenes split into fake "webcam tiles" | dark scenery reads as dark divider columns | dividers must also be one flat colour (std < 6); fixed in analyze_shots.py, and `single_focus: content` always shows the whole picture |
 | A 5-webcam layout read as "meme" | its middle webcam is tall like a phone video | the meme rule requires every other tile to be thumbnail-sized; check `tiles` vs `meme` in the printout |
