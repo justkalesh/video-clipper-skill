@@ -82,6 +82,37 @@ Then the `always_hashtags`. Never more than ~8, never unrelated trending tags (t
 **Tags** (`tags: auto`): 8-15 search phrases (topic, names, show, language variants such as "hinglish comedy").
 Keep the total under 480 characters.
 
+**Pinned comment.** One line that starts a conversation: a question, a hot take, or "part 2?". YouTube ranks
+Shorts partly on engagement, and the creator's own pinned comment is the first thing people reply to.
+- Example: "Be honest: would you have noticed the worn-out 9? 👀"
+
+**Suggested posting time** (`best_time`), when posting by hand:
+- the audience's evening peak (about 18:00-21:00 in `trend_region`'s main time zone)
+- or the lunch peak (12:00-13:00)
+- if the topic is having a moment (a launch, a trailer, news), as soon as possible
+
+## Post text for other platforms
+
+People posting by hand usually cross-post the same vertical clip. Write each app's text in its own style
+(`post_platforms`). Don't paste the YouTube text everywhere.
+
+**Instagram Reels caption**
+- The first line is the hook: only about 125 characters show before "more".
+- 1-3 short lines, then a question to drive comments, then 3-5 relevant hashtags on their own line.
+- Add a save/share prompt only if it's natural ("send this to the friend who…").
+- Keywords in the caption help Instagram search, so name the topic plainly in the first line.
+
+**TikTok caption**
+- Short: one line hook plus the topic keywords (TikTok search reads captions).
+- Then 3-5 hashtags, the specific ones first (#gta6), and at most one broad one (#gaming).
+- A question or "part 2?" invites comments.
+
+**On every platform**
+- Hashtags must describe the clip. Stuffing popular unrelated tags gets the post shown to the wrong people,
+  and can break the platform's spam rules.
+- The credit line goes in the YouTube description. On Instagram and TikTok, credit the original creator with
+  a short "via @creator" when their handle is known.
+
 ## Scheduling
 
 `youtube_upload.py schedule --count N --settings RUN/settings.json` turns `schedule` into publish times:

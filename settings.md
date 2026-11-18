@@ -154,7 +154,7 @@ quality: high                 # draft (fast, small) | high | max (largest files)
 # ─────────────────────────────── TITLE, CAPTION & HASHTAGS ──────────────────
 # Written per clip from what is said and shown in it, plus what is currently trending for that topic.
 # Saved to posts.md next to the clips, and used for the upload.
-post_platforms: [youtube, instagram, tiktok]  # which platforms to write post text for (title/caption, hashtags)
+post_platforms: [youtube, instagram]  # which platforms to write post text for: youtube | instagram | tiktok
 metadata_language: auto       # auto (same as the clip's captions) | english | any language
 trend_research: on            # on  = before writing, look up what's trending on YouTube for the clip's topic
                               #       and region (popular videos, their titles and tags, rising search terms)

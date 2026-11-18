@@ -36,9 +36,15 @@ For every clip, in `out/clips/<video-id>/`:
 | `1_<title>.mp4` | The finished clip: framed, captioned, loudness levelled for Shorts/Reels |
 | `1_<title>.jpg` | A cover image |
 | `1_<title>.srt` | Subtitles (if `export_srt` is on) |
-| `1_<title>.meta.json` | Title, description, hashtags, tags, upload info |
-| `posts.md` | All clips' titles, descriptions and hashtags in one readable page, with YouTube links once uploaded |
+| `1_<title>.meta.json` | Post text and upload info: YouTube title, description, hashtags, tags; Instagram and TikTok captions; pinned comment; suggested posting time |
+| `posts.md` | All of that, copy-ready, for every clip, with YouTube links once uploaded |
 | `_checks/1_<title>.jpg` | An 8-frame contact sheet used to check the clip |
+
+When the clips aren't uploaded automatically, Claude also gives the full post text for every clip right in the
+chat, ready to copy.
+
+The long source video is **deleted** after the clips are made and checked (`keep_source: false`, the default),
+because it's by far the biggest file. Transcripts and clip data stay, so a later re-cut just downloads it again.
 
 ## 2. Setup
 
@@ -107,14 +113,16 @@ In **autopilot** mode it does everything without stopping.
      ▼
  7. RENDER & CHECK ─── Remotion render, loudness, cover, srt, contact sheet ──── render.py + Claude looks
      │
+     ├── CLEAN UP ─── delete the long source video (unless keep_source) ─────── fetch.py cleanup
      ▼
- 8. POST TEXT ─── trends → title, description, hashtags, tags ────────────────── trends.py + Claude, posts.py
-     │
+ 8. POST TEXT ─── trends → YouTube title/description/hashtags/tags, ──────────── trends.py + Claude, posts.py
+     │                Instagram + TikTok captions, pinned comment, posting time
      ▼
  9. UPLOAD ─── private for review, or scheduled/public ───────────────────────── youtube_upload.py
      │
      ▼
-10. REPORT ─── table of clips + links, decisions made, log entry
+10. REPORT ─── table of clips + links, decisions made, space freed, log entry;
+               if not uploaded: every clip's full post text in the chat, ready to copy
 ```
 
 The split of work is deliberate. **Claude does the judgment**:
@@ -152,8 +160,8 @@ shot over a blurred background.
 | Title & branding | `title`, `title_position`, `title_duration`, `watermark`, `progress_bar`, `end_card` |
 | Audio | `normalize_loudness`, `voice_boost`, `fade_ms`, `background_music`, `music_volume` |
 | Source | `download_quality`, `download_mode`, `transcript_source`, `whisper_model`, `spoken_language` |
-| Output | `output_folder`, `file_name`, `export_srt`, `export_thumbnail`, `quality` |
-| Post text | `metadata_language`, `trend_research`, `trend_region`, `title_style`, `title_max_chars`, `hashtags`, `always_hashtags`, `tags`, `credit_source`, `honest_titles` |
+| Output | `keep_source`, `output_folder`, `file_name`, `export_srt`, `export_thumbnail`, `quality` |
+| Post text | `post_platforms`, `metadata_language`, `trend_research`, `trend_region`, `title_style`, `title_max_chars`, `hashtags`, `always_hashtags`, `tags`, `credit_source`, `honest_titles` |
 | Publishing | `upload_to`, `privacy`, `schedule`, `max_uploads_per_day`, `review_before_publish`, `playlist`, `category`, `made_for_kids`, `notify_subscribers`, `altered_content`, `rights_check` |
 
 `settings.md` also has ready-made presets (Bold karaoke, Clean subtitles, Hype, Landscape, Family-safe, Autopilot to
@@ -279,7 +287,14 @@ re-renders any clip that's off. Frame rate follows the source by default, so mot
 - **Hashtags.** `hashtags` relevant ones, the best 3 first, because YouTube shows those above the title. Then
   your `always_hashtags`. Never unrelated trending tags.
 - **Description.** Short or full (`description_style`), with the credit line to the original (`credit_source`).
-- No one can guarantee a clip goes viral. The skill does the things that help: hook, title, hashtags and timing.
+- **Everything else a short needs:**
+  - a hook line and a comment question (call to action) in every description
+  - search tags
+  - a pinned comment that starts a conversation
+  - a suggested posting time
+  - separate captions written for Instagram Reels and TikTok (`post_platforms`)
+- No one can guarantee a clip goes viral. The skill does the things that help: hook, title, hashtags,
+  engagement prompts and timing.
 
 ### 6.7 Uploading and scheduling
 - `youtube_upload.py` uses the official YouTube Data API with your own Google project. The sign-in is saved in
@@ -325,8 +340,9 @@ python scripts/analyze_shots.py V 754.2 801.6 R/shots_1.json --settings R/settin
 python scripts/build_clip.py --run R --shots R/shots_1.json --start 754.2 --end 801.6 --id 1 \
   --title "My clip title" --settings R/settings.json --out R/clip_1.json
 
-# 7. render (several clip files at once is fine)
+# 7. render (several clip files at once is fine), check out/clips/VIDEO/_checks/, then free the space
 python scripts/render.py R/clip_1.json --settings R/settings.json --out-dir out/clips/VIDEO --video-id VIDEO
+python scripts/fetch.py cleanup VIDEO
 
 # 8. post text: write out/clips/VIDEO/1_my-clip-title.meta.json (format in youtube_upload.py), then
 python scripts/trends.py --query "topic words" --region US --shorts    # optional research
