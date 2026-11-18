@@ -1,11 +1,11 @@
-"""Collect every clip's post text (its .meta.json) into one readable, copy-ready posts.md.
+"""Collect every clip's post text (its .meta.json in _data/) into one readable, copy-ready posts.md.
 
-Usage:  python posts.py out/clips/<video-id>
+Usage:  python posts.py <output_folder>/<video folder>
 """
 import sys
 from pathlib import Path
 
-from common import load_json, probe, utf8
+from common import DATA_DIR, load_json, probe, utf8
 
 
 def tags_line(tags):
@@ -16,15 +16,19 @@ def block(text):
     return ["```", (text or "").strip(), "```", ""]
 
 
-if __name__ == "__main__":
-    utf8()
-    folder = Path(sys.argv[1])
-    metas = sorted(folder.glob("*.meta.json"))
-    lines = [f"# Posts for {folder.name}", "",
+def metas_in(folder):
+    folder = Path(folder)
+    return sorted((folder / DATA_DIR).glob("*.meta.json")) or sorted(folder.glob("*.meta.json"))
+
+
+def build(folder):
+    folder = Path(folder)
+    metas = metas_in(folder)
+    lines = [f"# Posts: {folder.name}", "",
              "Everything below is ready to copy. Hashtags are already in each description/caption.", ""]
     for i, m in enumerate(metas, 1):
         meta = load_json(m)
-        video = m.with_name(m.name.replace(".meta.json", ".mp4"))
+        video = folder / m.name.replace(".meta.json", ".mp4")
         length = f"{probe(video)['duration']:.0f}s" if video.exists() else "?"
         yt = meta.get("youtube")
         status = "not uploaded"
@@ -35,7 +39,7 @@ if __name__ == "__main__":
         tl = tags_line(meta.get("hashtags"))
         if tl and tl.split()[0].lower() not in desc.lower():
             desc = f"{desc}\n\n{tl}"
-        lines += [f"## {i}. {meta.get('title', '')}", "",
+        lines += [f"## {video.stem}", "",
                   f"**File:** {video.name} · **Length:** {length} · **YouTube:** {status}"
                   + (f" · **Post at:** {meta['best_time']}" if meta.get("best_time") else ""), "",
                   "**YouTube title**", *block(meta.get("title")),
@@ -50,4 +54,10 @@ if __name__ == "__main__":
         if meta.get("pinned_comment"):
             lines += ["**Pinned comment**", *block(meta["pinned_comment"])]
     (folder / "posts.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"{len(metas)} clips -> {folder / 'posts.md'}")
+    return len(metas)
+
+
+if __name__ == "__main__":
+    utf8()
+    n = build(sys.argv[1])
+    print(f"{n} clips -> {Path(sys.argv[1]) / 'posts.md'}")

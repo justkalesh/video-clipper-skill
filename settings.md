@@ -150,7 +150,8 @@ keep_source: false            # false = delete the downloaded long video once th
                               #         (it's the biggest file; transcripts and clip data are kept)
                               # true  = keep it (handy if you'll cut more clips from the same video soon)
 output_folder: out/clips
-file_name: "{n}_{slug}"       # {n} rank, {slug} title in short form, {video_id}, {date}
+file_name: "{n:02d} - {title}"  # clip file names: {n} rank, {title} the clip's title, {slug}, {video_id}, {date}
+                              # (organize.py renames them to the final post title at the end)
 export_srt: false             # also save a .srt caption file next to each clip
 export_thumbnail: true        # save a cover image (best frame + title) per clip
 quality: high                 # draft (fast, small) | high | max (largest files)

@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-from common import PUBLIC, RUNS, load_json, probe, run, save_json, slug, utf8, need
+from common import PUBLIC, RUNS, load_json, probe, run, save_json, slug, utf8, need, video_folder
 
 
 def is_local(src):
@@ -72,9 +72,10 @@ def cmd_info(src):
                                        if k.endswith("-orig") or k in ("en", d.get("language") or ""))
         if info.get("description") and len(info["description"]) > 3000:
             info["description"] = info["description"][:3000] + " ..."
+    info["folder"] = video_folder(info)  # where this video's clips go: <output_folder>/<folder>
     out = RUNS / info["id"] / "info.json"
     save_json(out, info)
-    print(json.dumps({"id": info["id"], "info": str(out), "title": info.get("title"),
+    print(json.dumps({"id": info["id"], "folder": info["folder"], "info": str(out), "title": info.get("title"),
                       "duration": info.get("duration"), "language": info.get("language"),
                       "subtitles": info["subtitles"], "auto_captions": info["auto_captions"]}, ensure_ascii=False))
 

@@ -29,16 +29,17 @@ and decides.
 
 ## 1. What you get
 
-For every clip, in `out/clips/<video-id>/`:
+One folder per source video, named after it, e.g. `out/clips/Why GTA 6 Graphics Is INCREDIBLE (INTER)/`:
 
 | File | What it is |
 |---|---|
-| `1_<title>.mp4` | The finished clip: framed, captioned, loudness levelled for Shorts/Reels |
-| `1_<title>.jpg` | A cover image |
-| `1_<title>.srt` | Subtitles (if `export_srt` is on) |
-| `1_<title>.meta.json` | Post text and upload info: YouTube title, description, hashtags, tags; Instagram and TikTok captions; pinned comment; suggested posting time |
+| `01 - <title>.mp4` | The finished clip, named after its post title: framed, captioned, loudness levelled for Shorts/Reels |
+| `01 - <title>.jpg` | Its cover image |
+| `01 - <title>.srt` | Subtitles (if `export_srt` is on) |
+| `_data/01 - <title>.meta.json` | Post text and upload info: YouTube title, description, hashtags, tags; Instagram and TikTok captions; pinned comment; suggested posting time |
 | `posts.md` | All of that, copy-ready, for every clip, with YouTube links once uploaded |
-| `_checks/1_<title>.jpg` | An 8-frame contact sheet used to check the clip |
+| `_data/checks/01 - <title>.jpg` | An 8-frame contact sheet used to check the clip |
+| `_data/render_results.json` | Size, length and audio level of every render |
 
 When the clips aren't uploaded automatically, Claude also gives the full post text for every clip right in the
 chat, ready to copy.
@@ -142,7 +143,7 @@ In **autopilot** mode it does everything without stopping.
      │
      ├── CLEAN UP ─── delete the long source video (unless keep_source) ─────── fetch.py cleanup
      ▼
- 8. POST TEXT ─── trends → YouTube title/description/hashtags/tags, ──────────── trends.py + Claude, posts.py
+ 8. POST TEXT ─── trends → YouTube title/description/hashtags/tags, ──────────── trends.py + Claude, organize.py
      │                Instagram + TikTok captions, pinned comment, posting time
      ▼
  9. UPLOAD ─── private for review, or scheduled/public ───────────────────────── youtube_upload.py
@@ -370,17 +371,17 @@ python scripts/analyze_shots.py V 754.2 801.6 R/shots_1.json --settings R/settin
 python scripts/build_clip.py --run R --shots R/shots_1.json --start 754.2 --end 801.6 --id 1 \
   --title "My clip title" --settings R/settings.json --out R/clip_1.json
 
-# 7. render (several clip files at once is fine), check out/clips/VIDEO/_checks/, then free the space
-python scripts/render.py R/clip_1.json --settings R/settings.json --out-dir out/clips/VIDEO --video-id VIDEO
+# 7. render (several clip files at once is fine), check "out/clips/My Video (Channel)/_data/checks/", then free the space
+python scripts/render.py R/clip_1.json --settings R/settings.json --out-dir "out/clips/My Video (Channel)" --video-id VIDEO
 python scripts/fetch.py cleanup VIDEO
 
-# 8. post text: write out/clips/VIDEO/1_my-clip-title.meta.json (format in youtube_upload.py), then
+# 8. post text: write "out/clips/My Video (Channel)/_data/01 - My clip title.meta.json" (format in youtube_upload.py), then
 python scripts/trends.py --query "topic words" --region US --shorts    # optional research
-python scripts/posts.py out/clips/VIDEO
+python scripts/organize.py "out/clips/My Video (Channel)"     # name clips after their titles, write posts.md
 
 # 9. upload
 python scripts/youtube_upload.py auth --client-secret client_secret.json   # once
-python scripts/youtube_upload.py upload out/clips/VIDEO/1_my-clip-title.mp4 --meta out/clips/VIDEO/1_my-clip-title.meta.json
+python scripts/youtube_upload.py upload "out/clips/My Video (Channel)/01 - My clip title.mp4" --meta "out/clips/My Video (Channel)/_data/01 - My clip title.meta.json"
 ```
 
 For a local file, use its path instead of the link in `fetch.py info/audio/video`. It has no subtitles, so use
@@ -406,6 +407,7 @@ video-clipper/                     the skill
 │   ├── build_clip.py              words + shots + settings -> clip_N.json
 │   ├── render.py                  render, loudness, cover, srt, checks
 │   ├── trends.py                  what's working on YouTube for a topic
+│   ├── organize.py                name clips after their titles, tidy the folder, write posts.md
 │   ├── posts.py                   all post text in one posts.md
 │   ├── youtube_upload.py          connect channel, upload, publish, schedule
 │   └── common.py                  shared helpers

@@ -41,6 +41,28 @@ def slug(text, n=40):
     return s[:n].strip("-") or "clip"
 
 
+DATA_DIR = "_data"  # inside each video's output folder: post files, check sheets, render results
+
+
+def safe_name(text, n=80):
+    """A readable file/folder name from a title: keeps letters (any script), digits, spaces and plain punctuation;
+    drops emoji and the characters Windows/macOS forbid in names."""
+    import unicodedata
+    t = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(text))
+    t = re.sub(r"\s*(\.{2,}|…)\s*", " ", t)  # "INCREDIBLE.." / "wait…" read badly in a file name
+    t = "".join(ch for ch in t if ord(ch) <= 0xFFFF and unicodedata.category(ch) not in ("So", "Sk", "Cs", "Co")
+                and ch not in "️‍")
+    t = re.sub(r"\s+", " ", t).strip().rstrip(". ")
+    return t[:n].rstrip(". ") or "clip"
+
+
+def video_folder(info):
+    """Output folder name for a source video: 'Title (Channel)'."""
+    title = info.get("title") or info.get("id") or "video"
+    who = info.get("channel") or info.get("uploader")
+    return safe_name(f"{title} ({who})" if who else title, 90)
+
+
 def output_size(settings):
     """(width, height) of the finished clip from orientation + resolution (short side)."""
     r = int(settings.get("resolution", 1080) or 1080)

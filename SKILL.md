@@ -16,7 +16,9 @@ ffmpeg/OpenCV code drifts from what the renderer expects.
 **Paths.** `SKILL` = this folder. Scripts live in `SKILL/scripts/`; run them with plain `python` (not `python -I`,
 which hides user-installed packages such as OpenCV). Working files go to `~/.video-clipper/`:
 `runs/<video-id>/` per video (call it `RUN`) and `workspace/` (the Remotion project that renders clips).
-Finished clips go to `<output_folder>/<video-id>/` (relative to the user's current folder).
+Finished clips go to `<output_folder>/<folder>/`, one folder per source video, named "Title (Channel)".
+`fetch.py info` prints that `folder` name. Call it `OUT`. Clips are named after their titles (`01 - <title>.mp4`).
+Technical files live in `OUT/_data/`, so the folder stays easy to browse.
 
 ## 0. First run on a machine
 
@@ -143,10 +145,10 @@ A word-count mismatch prints both columns side by side: fix the lines where they
 
 ```bash
 python SKILL/scripts/render.py RUN/clip_1.json RUN/clip_2.json --settings RUN/settings.json \
-  --out-dir <output_folder>/<video-id> --video-id <video-id>
+  --out-dir "OUT" --video-id <video-id>
 ```
 It renders, levels loudness, saves cover images and subtitle files if enabled, and writes a contact sheet per
-clip to `_checks/`. **Open every check sheet** (read the image) before calling a clip done. Look for:
+clip to `OUT/_data/checks/`. **Open every check sheet** (read the image) before calling a clip done. Look for:
 - faces cut off or off-centre
 - a split screen where one view would be better, or the reverse
 - captions covering faces
@@ -166,7 +168,7 @@ Say how much space it freed.
 
 ## 8. Titles, descriptions, hashtags
 
-For each finished clip write `<name>.meta.json` next to its MP4 (format in `scripts/youtube_upload.py`), with
+For each finished clip write `OUT/_data/<clip file name>.meta.json` (format in `scripts/youtube_upload.py`), with
 post text for every platform in `post_platforms`. Every clip gets the full set a short needs to perform:
 - a scroll-stopping **title** (YouTube), a **description** that opens on a hook line and ends with a comment
   question (the call to action), and the credit line
@@ -185,7 +187,9 @@ Read `references/youtube.md` for how to write them. In short:
 - Description: shaped by `description_style`. Add the credit line when `credit_source` is on.
 - Hashtags: `hashtags` of them, put the most important 3 first, add `always_hashtags`. Use only relevant ones.
 
-Then collect everything into one readable file: `python SKILL/scripts/posts.py <output_folder>/<video-id>`.
+Then tidy the folder: `python SKILL/scripts/organize.py "OUT"`. It renames every clip (and its cover and subtitles)
+to `NN - <post title>`, keeps the ranked order, moves the post files to `_data/`, and writes `posts.md` with all
+the post text. Upload with the renamed paths it prints.
 
 ## 9. Upload (only when `upload_to: youtube`)
 
@@ -197,7 +201,7 @@ Then collect everything into one readable file: `python SKILL/scripts/posts.py <
   before running `youtube_upload.py publish <id>` (or `--at <time>`). With `false`, upload with the final privacy.
 - `youtube_upload.py upload <mp4> --meta <meta.json>` per clip. Respect `max_uploads_per_day`. The free API
   quota allows about 6 uploads a day, and new API projects can only upload private videos until Google audits them.
-- Run `posts.py` again so posts.md shows the links.
+- Run `posts.py "OUT"` again so posts.md shows the links.
 
 ## 10. Finish
 

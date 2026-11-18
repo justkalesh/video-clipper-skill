@@ -3,12 +3,14 @@
 Usage:
   python render.py clip_1.json clip_2.json ... --settings run_settings.json --out-dir out/clips/<video-id>
 
-For every clip it writes, in --out-dir:
-  <name>.mp4          the finished clip (name from the file_name setting)
-  <name>.jpg          cover image (if export_thumbnail)
-  <name>.srt          subtitles (if export_srt)
-  _checks/<name>.jpg  8-frame contact sheet: LOOK AT IT before calling the clip done
+For every clip it writes, in --out-dir (one folder per source video):
+  <name>.mp4                the finished clip, named by the file_name setting (default "01 - <title>")
+  <name>.jpg                cover image (if export_thumbnail)
+  <name>.srt                subtitles (if export_srt)
+  _data/checks/<name>.jpg   8-frame contact sheet: LOOK AT IT before calling the clip done
+  _data/render_results.json one entry per render
 and prints one summary line per clip (size, length, audio level, problems found).
+organize.py later renames the files to the final post titles.
 """
 import argparse
 import datetime
@@ -18,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import WORKSPACE, load_json, need, probe, slug, utf8
+from common import DATA_DIR, WORKSPACE, load_json, need, probe, safe_name, slug, utf8
 
 CRF = {"draft": 28, "high": 18, "max": 14}
 
@@ -67,18 +69,20 @@ def main():
     a = ap.parse_args()
     s = load_json(a.settings, {})
     out_dir = Path(a.out_dir)
-    (out_dir / "_checks").mkdir(parents=True, exist_ok=True)
+    checks = out_dir / DATA_DIR / "checks"
+    checks.mkdir(parents=True, exist_ok=True)
     tmp_dir = WORKSPACE / "out"
     tmp_dir.mkdir(exist_ok=True)
 
     print("bundling...", flush=True)
     bundle()
-    pattern = str(s.get("file_name", "{n}_{slug}"))
+    pattern = str(s.get("file_name", "{n:02d} - {title}"))
     results = []
     for n, path in enumerate(a.clips, 1):
         clip = load_json(path)
-        name = pattern.format(n=n, slug=slug(clip.get("title") or clip["id"]), video_id=a.video_id,
-                              date=datetime.date.today().isoformat())
+        title = clip.get("title") or clip["id"]
+        name = safe_name(pattern.format(n=n, title=safe_name(title), slug=slug(title), video_id=a.video_id,
+                                        date=datetime.date.today().isoformat()), 110)
         tmp = tmp_dir / f"{clip['id']}.mp4"
         props = Path(path).resolve()
         wrapped = tmp_dir / f"{clip['id']}.props.json"  # the composition's props are {"data": <clip>}
@@ -121,13 +125,13 @@ def main():
         step = max(dur / 8, 0.5)
         subprocess.run([need("ffmpeg"), "-v", "error", "-y", "-i", str(final), "-vf",
                         f"fps=1/{step:.3f},scale=240:-2,tile=8x1", "-frames:v", "1",
-                        str(out_dir / "_checks" / f"{name}.jpg")], check=False)
+                        str(checks / f"{name}.jpg")], check=False)
         res = {"clip": name, "file": str(final), "ok": not problems, "seconds": round(info["duration"], 1),
                "size": f"{info['width']}x{info['height']}", "mean_volume_db": vol, "problems": problems,
-               "check_sheet": str(out_dir / "_checks" / f"{name}.jpg"), "data": str(props), "title": clip["title"]}
+               "check_sheet": str(checks / f"{name}.jpg"), "data": str(props), "title": clip["title"]}
         results.append(res)
         print("   " + json.dumps(res, ensure_ascii=False), flush=True)
-    log = out_dir / "render_results.json"
+    log = out_dir / DATA_DIR / "render_results.json"
     old = load_json(log, [])
     log.write_text(json.dumps(old + results, ensure_ascii=False, indent=1), encoding="utf-8")
     bad = [r for r in results if not r["ok"]]
