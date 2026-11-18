@@ -157,14 +157,7 @@ clip to `OUT/_data/checks/`. **Open every check sheet** (read the image) before 
 Fix the shots JSON or the settings, rebuild that one clip and render it again. Problems in the summary line
 (wrong size, no audio, wrong length) must be fixed, not reported.
 
-**Then delete the long source video** (unless `keep_source: true`). Do it once every clip has passed its check,
-and in assisted mode once the user has seen the clips and asked for no re-cuts:
-```bash
-python SKILL/scripts/fetch.py cleanup <video-id>
-```
-It removes only the skill's own downloaded or copied files (the video, section files, extracted audio), never a
-file the user pointed at. Transcripts, shots and clip data stay, so a later re-cut just re-downloads.
-Say how much space it freed.
+(Don't delete anything yet: re-cuts need the source and the run files. Cleanup is the last step.)
 
 ## 8. Titles, descriptions, hashtags
 
@@ -206,7 +199,30 @@ the post text. Upload with the renamed paths it prints.
 ## 10. Finish
 
 Append a short entry to `log_file`: the video, the profile, each clip (time range, title, file, upload link)
-and anything that needed a manual fix. Then report to the user:
+and anything that needed a manual fix. Write the log **before** cleaning up, because the profile lives in the run
+folder.
+
+**Clean up** (`cleanup` setting, unless `none`). Do it once the clips are final: every check passed, uploads done,
+and in assisted mode the user has seen the clips and wants no re-cuts.
+```bash
+python SKILL/scripts/cleanup.py <video-id> --out "OUT" --level full     # or --level source
+```
+`full` deletes everything with no further use:
+- the long video and its audio
+- the run folder: subtitles, transcripts, word timings, signals, profile, overview/range frames, shots, caption
+  files, clip data
+- the check sheets and render results
+- the renderer's temporary files
+
+It keeps:
+- the clips with their covers and subtitles
+- `posts.md`
+- the post files in `OUT/_data` (needed to upload, schedule or publish later)
+- the log
+
+It never touches a file the user pointed at; a local video is copied into the workspace and only the copy is deleted.
+
+Then report to the user:
 - a table of the clips: title, length, file, link
 - what you decided for the `auto` settings
 - anything that still needs their attention

@@ -146,9 +146,12 @@ whisper_model: large-v3       # small | medium | large-v3 (bigger = more accurat
 spoken_language: auto         # auto | a language code (hi, en, es, ...)
 
 # ─────────────────────────────── OUTPUT ─────────────────────────────────────
-keep_source: false            # false = delete the downloaded long video once the clips are made and checked
-                              #         (it's the biggest file; transcripts and clip data are kept)
-                              # true  = keep it (handy if you'll cut more clips from the same video soon)
+cleanup: full                 # what to delete once the clips are finished (and uploaded, if that's on):
+                              # full   = everything with no further use: the long video, subtitles, transcripts,
+                              #          analysis and test/check frames, render leftovers. Kept: the clips with
+                              #          their covers/subtitles, posts.md, the post files in _data, the run log
+                              # source = only the long video (keep transcripts to cut more clips later)
+                              # none   = keep everything
 output_folder: out/clips
 file_name: "{n:02d} - {title}"  # clip file names: {n} rank, {title} the clip's title, {slug}, {video_id}, {date}
                               # (organize.py renames them to the final post title at the end)

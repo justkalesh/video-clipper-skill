@@ -6,11 +6,9 @@ Usage:
   python fetch.py audio <url-or-file>                         -> runs/<id>/audio.m4a (for Whisper / loudness)
   python fetch.py video <url-or-file> [--quality 1080]        -> workspace/public/source/<id>.mp4 (whole video)
   python fetch.py video <url> --sections "754-812,1100-1160"  -> one file per range, cut on exact frames
-  python fetch.py cleanup <video-id>                          -> delete the downloaded/copied long video + audio
 Every command prints a JSON line describing what it wrote.
 
-cleanup only touches the skill's own copies (workspace/public/source/<id>*, runs/<id>/audio.*), never a file the
-user pointed at. Transcripts, shots and clip data stay, so clips can be re-rendered after a re-download.
+(Deleting downloads when a run is finished: see cleanup.py.)
 """
 import argparse
 import json
@@ -175,29 +173,14 @@ def cmd_video(src, quality, sections):
     print(json.dumps({"id": vid, "files": files}))
 
 
-def cmd_cleanup(vid):
-    removed, freed = [], 0
-    targets = list((PUBLIC / "source").glob(f"{vid}.*")) + list((PUBLIC / "source").glob(f"{vid}_*")) + \
-        list((RUNS / vid).glob("audio.*"))
-    for f in targets:
-        if f.is_file():
-            freed += f.stat().st_size
-            f.unlink()
-            removed.append(f.name)
-    manifest = RUNS / vid / "video_files.json"
-    if manifest.exists():
-        manifest.unlink()
-    print(json.dumps({"id": vid, "deleted": removed, "freed_mb": round(freed / 1e6)}))
-
-
 if __name__ == "__main__":
     utf8()
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["info", "subs", "audio", "video", "cleanup"])
+    ap.add_argument("what", choices=["info", "subs", "audio", "video"])
     ap.add_argument("src")
     ap.add_argument("--lang", default="")
     ap.add_argument("--quality", default="1080")
     ap.add_argument("--sections", default="")
     a = ap.parse_args()
     {"info": lambda: cmd_info(a.src), "subs": lambda: cmd_subs(a.src, a.lang), "audio": lambda: cmd_audio(a.src),
-     "video": lambda: cmd_video(a.src, a.quality, a.sections), "cleanup": lambda: cmd_cleanup(a.src)}[a.what]()
+     "video": lambda: cmd_video(a.src, a.quality, a.sections)}[a.what]()

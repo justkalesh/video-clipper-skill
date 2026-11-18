@@ -44,8 +44,15 @@ One folder per source video, named after it, e.g. `out/clips/Why GTA 6 Graphics 
 When the clips aren't uploaded automatically, Claude also gives the full post text for every clip right in the
 chat, ready to copy.
 
-The long source video is **deleted** after the clips are made and checked (`keep_source: false`, the default),
-because it's by far the biggest file. Transcripts and clip data stay, so a later re-cut just downloads it again.
+When the run is finished, everything with no further use is **deleted** (`cleanup: full`, the default):
+- the long source video
+- subtitles and transcripts
+- analysis files and check frames
+- render leftovers
+
+The folder ends up holding only what you use: the clips, their covers and subtitles, `posts.md`, and the small
+post files in `_data` that uploading needs. Set `cleanup: source` to keep transcripts for more clips later, or
+`none` to keep everything.
 
 ## 2. Setup
 
@@ -141,7 +148,6 @@ In **autopilot** mode it does everything without stopping.
      ▼
  7. RENDER & CHECK ─── Remotion render, loudness, cover, srt, contact sheet ──── render.py + Claude looks
      │
-     ├── CLEAN UP ─── delete the long source video (unless keep_source) ─────── fetch.py cleanup
      ▼
  8. POST TEXT ─── trends → YouTube title/description/hashtags/tags, ──────────── trends.py + Claude, organize.py
      │                Instagram + TikTok captions, pinned comment, posting time
@@ -149,7 +155,8 @@ In **autopilot** mode it does everything without stopping.
  9. UPLOAD ─── private for review, or scheduled/public ───────────────────────── youtube_upload.py
      │
      ▼
-10. REPORT ─── table of clips + links, decisions made, space freed, log entry;
+10. LOG, CLEAN UP, REPORT ─── log entry; delete what has no use left ────────── cleanup.py
+               then: table of clips + links, decisions made, space freed;
                if not uploaded: every clip's full post text in the chat, ready to copy
 ```
 
@@ -188,7 +195,7 @@ shot over a blurred background.
 | Title & branding | `title`, `title_position`, `title_duration`, `watermark`, `progress_bar`, `end_card` |
 | Audio | `normalize_loudness`, `voice_boost`, `fade_ms`, `background_music`, `music_volume` |
 | Source | `download_quality`, `download_mode`, `transcript_source`, `whisper_model`, `spoken_language` |
-| Output | `keep_source`, `output_folder`, `file_name`, `export_srt`, `export_thumbnail`, `quality` |
+| Output | `cleanup`, `output_folder`, `file_name`, `export_srt`, `export_thumbnail`, `quality` |
 | Post text | `post_platforms`, `metadata_language`, `trend_research`, `trend_region`, `title_style`, `title_max_chars`, `hashtags`, `always_hashtags`, `tags`, `credit_source`, `honest_titles` |
 | Publishing | `upload_to`, `privacy`, `schedule`, `max_uploads_per_day`, `review_before_publish`, `playlist`, `category`, `made_for_kids`, `notify_subscribers`, `altered_content`, `rights_check` |
 
@@ -373,7 +380,7 @@ python scripts/build_clip.py --run R --shots R/shots_1.json --start 754.2 --end 
 
 # 7. render (several clip files at once is fine), check "out/clips/My Video (Channel)/_data/checks/", then free the space
 python scripts/render.py R/clip_1.json --settings R/settings.json --out-dir "out/clips/My Video (Channel)" --video-id VIDEO
-python scripts/fetch.py cleanup VIDEO
+python scripts/cleanup.py VIDEO --out "out/clips/My Video (Channel)"   # when you're completely done
 
 # 8. post text: write "out/clips/My Video (Channel)/_data/01 - My clip title.meta.json" (format in youtube_upload.py), then
 python scripts/trends.py --query "topic words" --region US --shorts    # optional research
@@ -407,6 +414,7 @@ video-clipper/                     the skill
 │   ├── build_clip.py              words + shots + settings -> clip_N.json
 │   ├── render.py                  render, loudness, cover, srt, checks
 │   ├── trends.py                  what's working on YouTube for a topic
+│   ├── cleanup.py                 delete what a finished run no longer needs
 │   ├── organize.py                name clips after their titles, tidy the folder, write posts.md
 │   ├── posts.py                   all post text in one posts.md
 │   ├── youtube_upload.py          connect channel, upload, publish, schedule
