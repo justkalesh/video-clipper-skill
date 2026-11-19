@@ -68,6 +68,13 @@ def mask(w):
     return lead + core[0] + "*" * (len(core) - 2) + core[-1] + trail
 
 
+def emphasis_of(token):
+    """'*word' = emphasise word. A token that is all asterisks ('****', a hidden swear) is a word, not a marker."""
+    if token.startswith("*") and token.strip("*"):
+        return token[1:], True
+    return token, False
+
+
 def spoken_in(words, start, end):
     """The transcript words a clip covers (markers like [Laughter] excluded). Tokens files match these 1:1."""
     return [w for w in words if start - WINDOW_SLACK <= w["t"] < end and not w.get("m")]
@@ -104,7 +111,8 @@ def caption_words(words, start, end, captions, s, emphasis):
             for p in parts:
                 t = a + (b - a) * acc / total
                 acc += len(p) + 1
-                toks.append({"t": t, "e": a + (b - a) * acc / total, "w": p.lstrip("*"), "emph": p.startswith("*")})
+                w, emph = emphasis_of(p)
+                toks.append({"t": t, "e": a + (b - a) * acc / total, "w": w, "emph": emph})
     elif captions:
         lines = [l.strip() for l in Path(captions).read_text(encoding="utf-8").splitlines() if l.strip()]
         lines = [l for l in lines if not l.startswith("#")]
@@ -117,7 +125,8 @@ def caption_words(words, start, end, captions, s, emphasis):
                      "fix the lines where the two columns drift apart")
         for w, l in zip(spoken, lines):
             if l != "-":
-                toks.append({"t": w["t"], "e": w["e"], "w": l.lstrip("*"), "emph": l.startswith("*")})
+                text, emph = emphasis_of(l)
+                toks.append({"t": w["t"], "e": w["e"], "w": text, "emph": emph})
     else:
         prev = None
         for w in spoken:

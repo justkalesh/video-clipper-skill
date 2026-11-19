@@ -283,7 +283,13 @@ const Captions: React.FC<{ data: ClipData; y: number; scale: number }> = ({ data
   const line = s.captionStyle === "line";
   const pop = s.captionStyle === "pop";
   const boxed = s.captionStyle === "boxed";
-  const size = s.fontSize * scale * (line ? 0.6 : pop ? 1.2 : 1) * (page.marker ? 0.6 : 1);
+  const base = s.fontSize * scale * (line ? 0.6 : pop ? 1.2 : 1) * (page.marker ? 0.6 : 1);
+  // keep karaoke/pop/boxed captions on one line: shrink a long group to fit the width (wide fonts such as
+  // Montserrat Black run out of room before max_caption_chars does). Estimated: ~0.66 em per character.
+  const chars = page.words.reduce((n, w) => n + w.text.length, 0);
+  const est = base * (chars * 0.66 + Math.max(page.words.length - 1, 0) * 0.28) * 1.08;
+  const avail = data.width - 80 * scale - (boxed ? 52 * scale : 0);
+  const size = line ? base : base * Math.min(1, avail / Math.max(est, 1));
   const stroke = boxed ? 0 : Math.max(2, size * (line ? 0.08 : 0.13));
   const transform = pop
     ? `translateY(-50%) scale(${0.55 + 0.45 * popIn})`
