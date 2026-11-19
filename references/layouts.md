@@ -19,9 +19,14 @@ Horizontal output (16:9) uses side-by-side columns instead of top/bottom rows.
 
 ## How settings change it
 
-- `angle_mode: single` → always one panel. `single_focus` picks it: `auto`/`biggest_face`/`speaker` = the biggest
-  face, `content` = the screen/meme, `center` = frame centre. (`speaker` is approximated by the biggest face:
-  there is no active-speaker detection yet.)
+- `angle_mode: single` → always one panel. `single_focus` picks it: `auto`/`biggest_face` = the biggest face,
+  `speaker` = whoever is talking (mouth-area change minus eye-area change, so head movement doesn't count),
+  `content` = the screen/meme, `center` = frame centre. With `speaker`, a shot with several people becomes one
+  segment per speaker turn: activity is scored per half second, smoothed over 1.5 s, and the view only switches
+  when someone else is clearly more active and the current person has had at least 2 s.
+- Every shot also lists `faces` (output pixels, placed where a moving crop actually is). build_clip.py uses them
+  to keep `caption_position: auto` captions off faces; delete a wrong entry if a false detection pushes captions
+  somewhere odd.
 - `multi_layout` forces `stack` / `grid` / `main_plus_row` instead of the default per count.
 - `max_panels` caps the number of panels (the biggest webcams/faces are kept).
 - `screen_content`: `fill` = only the content; `with_faces` = content + faces; `faces_only` = drop the content.

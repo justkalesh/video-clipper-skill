@@ -6,12 +6,17 @@ Usage:
   python settings.py --file other_settings.md
 
 Values: on/true/yes -> true, off/false/no -> false, numbers -> numbers, [..] -> list, anything else -> text.
+Paths (output_folder, log_file, watermark, background_music) come out absolute: "~" is the home folder, and a
+relative path is taken from the folder this runs in (the folder Claude Code was opened in), so every later step
+writes to the same place.
 """
 import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+PATH_KEYS = ("output_folder", "log_file", "watermark", "background_music")
 
 from common import SKILL_DIR, save_json, utf8
 
@@ -90,6 +95,10 @@ def load(path=None, overrides=()):
         if parts[-1] not in target and key.split(".")[0] not in data:
             print(f"warning: '{key}' is not a known setting", file=sys.stderr)
         target[parts[-1]] = convert(val)
+    for k in PATH_KEYS:
+        v = data.get(k)
+        if isinstance(v, str) and v.strip() and v.strip().lower() not in ("off", "none", "auto"):
+            data[k] = str(Path(v.strip()).expanduser().resolve())
     return data
 
 

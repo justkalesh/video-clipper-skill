@@ -5,7 +5,9 @@ Usage:
   python trends.py --chart --region IN [--category Comedy]       # what's on the trending chart
 
 Needs either a YouTube Data API key (env YOUTUBE_API_KEY, or the file ~/.video-clipper/youtube/api_key.txt)
-or a connected channel (youtube_upload.py auth). Without either it exits with code 2: then use web search.
+or a connected channel (youtube_upload.py auth). With several channels, pass --channel "<name>" to use that one's
+sign-in; without it, the default sign-in or else any saved one is used (a lookup reads public data, so any works).
+Without a key or sign-in it exits with code 2: then use web search.
 Quota: a search costs 100 of the 10,000 free daily units (the same pool uploads use, ~1,600 each).
 """
 import argparse
@@ -36,17 +38,33 @@ def api_key():
     return None
 
 
+CHANNEL = ""
+
+
+def signed_in_channel():
+    """The channel whose saved sign-in to use, as youtube_upload.py names it, or None if there's none."""
+    import youtube_upload as yu
+    if CHANNEL and CHANNEL != "default":
+        yu.CHANNEL = CHANNEL
+        if yu.token_path().exists():
+            return CHANNEL
+    if (HOME / "youtube" / "token.json").exists():
+        return "default"
+    others = sorted((HOME / "youtube").glob("token-*.json"))
+    return others[0].stem[len("token-"):] if others else None  # token-<slug>.json: the slug names it again
+
+
 def call(endpoint, params):
     key = api_key()
     if key:
         params = {**params, "key": key}
         with urllib.request.urlopen(API + endpoint + "?" + urllib.parse.urlencode(params), timeout=30) as r:
             return json.loads(r.read().decode("utf-8"))
-    token = HOME / "youtube" / "token.json"
-    if token.exists():
-        from youtube_upload import service
-        yt = service()
-        res = getattr(yt, endpoint)()
+    channel = signed_in_channel()
+    if channel:
+        import youtube_upload as yu
+        yu.CHANNEL = channel
+        res = getattr(yu.service(), endpoint)()
         return res.list(**params).execute()
     print("No YouTube API key or connected channel: use web search for trends instead "
           "(see references/youtube.md to add a key).", file=sys.stderr)
@@ -93,7 +111,9 @@ if __name__ == "__main__":
     ap.add_argument("--days", type=int, default=14)
     ap.add_argument("--category", default="")
     ap.add_argument("--shorts", action="store_true", help="only videos under 4 minutes")
+    ap.add_argument("--channel", default="", help="the youtube_channel setting, when not default")
     a = ap.parse_args()
+    CHANNEL = a.channel
     if a.chart:
         params = {"part": "snippet,statistics", "chart": "mostPopular", "maxResults": 30,
                   "regionCode": a.region or "US"}

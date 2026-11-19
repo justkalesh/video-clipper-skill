@@ -66,9 +66,28 @@ def sync_workspace(install):
         print("  running npm install in the workspace (one time, a few minutes)...", flush=True)
         r = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=WORKSPACE)
         if r.returncode == 0:
-            stamp.write_text(pkg_hash)
-            installed = True
+            installed = bundle_check()
+            if installed:
+                stamp.write_text(pkg_hash)
     return installed
+
+
+def bundle_check():
+    """Bundle the workspace once to prove the install works (npm warnings about install scripts are harmless
+    when this passes)."""
+    npx = shutil.which("npx")
+    out = "build/_setup_check"
+    print("  checking that the renderer bundles...", flush=True)
+    r = subprocess.run([npx, "remotion", "bundle", "src/index.ts", f"--out-dir={out}"], cwd=WORKSPACE,
+                       capture_output=True, text=True) if npx else None
+    shutil.rmtree(WORKSPACE / out, ignore_errors=True)
+    build = WORKSPACE / "build"
+    if build.exists() and not any(build.iterdir()):
+        build.rmdir()
+    if r is None or r.returncode != 0:
+        print("  the Remotion bundle failed:\n" + ((r.stdout + r.stderr)[-2000:] if r else "npx not found"))
+        return False
+    return True
 
 
 def main():

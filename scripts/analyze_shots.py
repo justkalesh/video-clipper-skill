@@ -12,11 +12,16 @@ What it recognises per shot:
   single       one person (the crop can follow them as they move)
   content      no faces (gameplay, slides, scenery)
 
-Each shot becomes panels: {"box": output rect, "src": source rect, "mode": cover|contain, "track": [[sec, x, y]...]}.
+Each shot becomes panels: {"box": output rect, "src": source rect, "mode": cover|contain, "track": [[sec, x, y]...]},
+plus "faces": [[x, y, size]...] in output pixels (build_clip.py keeps captions off them).
 Edit the JSON by hand if a shot needs a different framing; build_clip.py reads it as-is.
+
+Shot times come from each frame's own timestamp, not from counting frames after a seek, so cuts land on the
+right frame even when OpenCV's seek is off by a few frames (common with H.264/B-frames).
 """
 import argparse
 import math
+import sys
 
 import cv2
 import numpy as np
@@ -54,7 +59,7 @@ FPS = cap.get(cv2.CAP_PROP_FPS) or 30
 W, H = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 SC = 2 if W >= 1280 else 1  # analyse at half resolution for speed
 w2, h2 = W // SC, H // SC
-cap.set(cv2.CAP_PROP_POS_MSEC, (A.start - A.offset) * 1000)
+FILE_DUR = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / FPS
 cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 if cascade.empty():
     raise SystemExit("OpenCV has no Haar face detector (OpenCV 5 removed it). pip install 'opencv-python-headless<5'")
@@ -104,21 +109,61 @@ def signature(tiles):
 
 
 # ---------------------------------------------------------------- pass 1: read frames
-tiles_per, diffs, grays = [], [], {}
-prev = None
-nframes = int((A.end - A.start) * FPS)
-for i in range(nframes):
+def pos():
+    return cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+
+
+def first_frame(target):
+    """Seek a little early, then step forward to the first frame at or after `target` (file time)."""
+    cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, target - 3.0) * 1000)
+    last, stuck = -1.0, 0
+    while cap.grab():
+        t = pos()
+        if t >= target - 0.5 / FPS:
+            ok, f = cap.retrieve()
+            return (f, True) if ok else (None, True)
+        stuck = stuck + 1 if t <= last else 0
+        last = t
+        if stuck > 30:  # this file gives no usable timestamps: plain seek and count frames
+            break
+    cap.set(cv2.CAP_PROP_POS_MSEC, target * 1000)
     ok, f = cap.read()
-    if not ok:
+    return (f if ok else None), False
+
+
+TARGET, END_T = A.start - A.offset, A.end - A.offset
+if TARGET < -0.05:
+    sys.exit(f"start {A.start} is before this file begins (--offset {A.offset}): check START and --offset")
+frame, use_ts = first_frame(max(TARGET, 0.0))
+tiles_per, diffs, grays, times = [], [], {}, []
+prev = None
+while frame is not None:
+    t = pos() if use_ts else max(TARGET, 0.0) + len(times) / FPS
+    if times and t <= times[-1]:  # a missing or repeated timestamp
+        t = times[-1] + 1 / FPS
+    if t >= END_T:
         break
-    g = cv2.cvtColor(cv2.resize(f, (w2, h2)), cv2.COLOR_BGR2GRAY)
+    i = len(times)
+    times.append(t)
+    g = cv2.cvtColor(cv2.resize(frame, (w2, h2)), cv2.COLOR_BGR2GRAY)
     tiles_per.append(tiles_of(g))
-    small = cv2.resize(f, (96, 54)).astype(np.float32)
+    small = cv2.resize(frame, (96, 54)).astype(np.float32)
     diffs.append(0.0 if prev is None else float(np.abs(small - prev).mean()))
     prev = small
     if i % 3 == 0:
         grays[i] = g
+    ok, frame = cap.read()
+    if not ok:
+        frame = None
 nframes = len(tiles_per)
+if nframes == 0:
+    sys.exit(f"no frames between {A.start:.2f}s and {A.end:.2f}s: this file covers {A.offset:.2f}s to "
+             f"{A.offset + FILE_DUR:.2f}s of the original. Check START/END and --offset.")
+
+
+def t_at(i):
+    """Original-video time of frame i (i == nframes: just after the last frame)."""
+    return A.offset + (times[i] if i < nframes else times[-1] + 1 / FPS)
 
 # ---------------------------------------------------------------- pass 2: shots
 cuts = [0]
@@ -141,7 +186,7 @@ if not shots:
 
 
 def faces_in(g, region, min_frac=0.06):
-    x0, y0, x1, y1 = (v // SC for v in region)
+    x0, y0, x1, y1 = (int(v) // SC for v in region)
     sub = g[y0:y1, x0:x1]
     if sub.size == 0:
         return []
@@ -154,15 +199,21 @@ def clusters_in(region, idx):
     """Group face detections across frames into people: [{cx, cy, size, seen, pts: [(frame, cx, cy)]}]."""
     cl = []
     for i in idx:
+        taken = set()  # two faces in the same frame are two people, however close
         for cx, cy, s in faces_in(grays[i], region):
-            best = None
-            for c in cl:
-                if abs(cx - c["cx"]) < max(c["size"] * 1.5, W * 0.08) and abs(cy - c["cy"]) < c["size"] * 2:
-                    best = c
-                    break
+            best, best_d = None, None
+            for k, c in enumerate(cl):
+                # compare with where the person was last seen, so someone walking across a stage stays one person
+                dx, dy = abs(cx - c["lx"]), abs(cy - c["ly"])
+                if k not in taken and dx < max(c["size"], W * 0.05) and dy < c["size"] * 1.5:
+                    if best_d is None or dx + dy < best_d:
+                        best, best_d = k, dx + dy
             if best is None:
-                best = {"cx": cx, "cy": cy, "size": s, "seen": 0, "pts": []}
-                cl.append(best)
+                cl.append({"cx": cx, "cy": cy, "size": s, "seen": 0, "pts": []})
+                best = len(cl) - 1
+            taken.add(best)
+            best = cl[best]
+            best["lx"], best["ly"] = cx, cy
             n = best["seen"]
             best["cx"] = (best["cx"] * n + cx) / (n + 1)
             best["cy"] = (best["cy"] * n + cy) / (n + 1)
@@ -173,6 +224,90 @@ def clusters_in(region, idx):
     cl = sorted([c for c in cl if c["seen"] >= need], key=lambda c: -c["size"])
     # faces much smaller than the main one are posters, photos or a TV in the background, not another person
     return [c for c in cl if c["size"] >= cl[0]["size"] * 0.55] if cl else []
+
+
+def mouth_values(person):
+    """Per sampled frame: how much the mouth area changed since the last sample, minus the eye area's change
+    (head movement). The person talking scores highest. [(frame, value), ...]"""
+    s = person["size"]
+    vals = []
+
+    def patch(g, cx, y_from, y_to):
+        x0, x1 = int((cx - s * 0.3) / SC), int((cx + s * 0.3) / SC)
+        y0, y1 = int(y_from / SC), int(y_to / SC)
+        x0, y0 = max(x0, 0), max(y0, 0)
+        return g[y0:y1, x0:x1].astype(np.int16)
+
+    for f, cx, cy in person.get("pts", []):
+        g, gp = grays.get(f), grays.get(f - 3)
+        if g is None or gp is None:
+            continue
+        m, mp = patch(g, cx, cy + s * 0.12, cy + s * 0.45), patch(gp, cx, cy + s * 0.12, cy + s * 0.45)
+        e, ep = patch(g, cx, cy - s * 0.3, cy - s * 0.05), patch(gp, cx, cy - s * 0.3, cy - s * 0.05)
+        if m.size and m.shape == mp.shape and e.size and e.shape == ep.shape:
+            vals.append((f, float(np.abs(m - mp).mean()) - 0.5 * float(np.abs(e - ep).mean())))
+    return vals
+
+
+BIN_S, HOLD_S = 0.5, 2.0  # speaker turns: scored per half second; each person stays on screen at least 2 s
+
+
+def speaker_turns(cands, a, b):
+    """single_focus: speaker. Who is talking when, as [(from_frame, to_frame, index into cands)]. Mouth activity
+    is averaged per half second and smoothed over 1.5 s; the view switches only when someone else is clearly more
+    active and the current person has been on for HOLD_S, so it follows the conversation without flickering."""
+    step = max(1, int(round(FPS * BIN_S)))
+    nb = max(1, math.ceil((b - a) / step))
+    tot, cnt = np.zeros((len(cands), nb)), np.zeros((len(cands), nb))
+    for k, p in enumerate(cands):
+        for f, v in mouth_values(p):
+            j = min(nb - 1, max(0, (f - a) // step))
+            tot[k, j] += v
+            cnt[k, j] += 1
+    score = np.where(cnt > 0, tot / np.maximum(cnt, 1), 0.0)
+    sm = np.array([np.convolve(np.pad(r, 1, mode="edge"), np.ones(3) / 3, mode="valid") for r in score])
+    hold = max(1, int(round(HOLD_S / BIN_S)))
+    cur = int(np.argmax(sm[:, :hold].sum(axis=1)))
+    turns, start = [], 0
+    for j in range(1, nb):
+        best = int(np.argmax(sm[:, j]))
+        if best != cur and j - start >= hold and sm[best, j] > sm[cur, j] * 1.3 + 0.3:
+            turns.append([start, j, cur])
+            start, cur = j, best
+    turns.append([start, nb, cur])
+    if len(turns) > 1 and (turns[-1][1] - turns[-1][0]) * BIN_S < 1.0:  # a last-second switch looks like a glitch
+        turns[-2][1] = turns.pop()[1]
+    return [(a + s * step, min(b, a + e * step), k) for s, e, k in turns]
+
+
+def only(person, f0, f1):
+    """The same person, with only their detections between two frames (for a speaker turn's crop)."""
+    return dict(person, pts=[q for q in person.get("pts", []) if f0 <= q[0] < f1])
+
+
+def faces_out(panel, idx, a):
+    """Faces visible in a panel, in output pixels: [[x, y, size], ...]. For a crop that follows someone, the crop
+    is placed where it is at each sampled frame."""
+    bx, by, bw, bh = panel["box"]
+    sw, sh = panel["src"][2], panel["src"][3]
+    sc = min(bw / sw, bh / sh) if panel.get("mode") == "contain" else max(bw / sw, bh / sh)
+    ox, oy = (bw - sw * sc) / 2, (bh - sh * sc) / 2
+    track = panel.get("track")
+    out, seen = [], set()
+    for i in sorted({idx[0], idx[len(idx) // 2], idx[-1]}):
+        if track:
+            t, ks = times[i] - times[a], [k[0] for k in track]
+            sx = float(np.interp(t, ks, [k[1] for k in track]))
+            sy = float(np.interp(t, ks, [k[2] for k in track]))
+        else:
+            sx, sy = panel["src"][0], panel["src"][1]
+        for cx, cy, size in faces_in(grays[i], (sx, sy, sx + sw, sy + sh), 0.04):
+            x, y = bx + ox + (cx - sx) * sc, by + oy + (cy - sy) * sc
+            k = (round(x / 40), round(y / 40))
+            if bx <= x <= bx + bw and by <= y <= by + bh and k not in seen:
+                seen.add(k)
+                out.append([round(x), round(y), round(size * sc)])
+    return out
 
 
 def content_box(tile, idx):
@@ -297,7 +432,7 @@ def tracked(panel, box, seg_start_frame, idx):
         if last is not None and f - last < FPS * 0.5:
             continue
         r = fit_rect(region, (x, y), aspect, 0.42, height)
-        keys.append([round((f - seg_start_frame) / FPS, 3), r[0], r[1]])
+        keys.append([round(times[int(f)] - times[seg_start_frame], 3), r[0], r[1]])
         last = f
     if len(keys) >= 2:
         panel["track"] = keys
@@ -307,8 +442,42 @@ def tracked(panel, box, seg_start_frame, idx):
 
 # ---------------------------------------------------------------- pass 3: decide each shot
 segments = []
+
+
+def emit(a, b, items, kind, idx):
+    """Turn a shot's (or speaker turn's) chosen views into panels and add it as a segment."""
+    rects = boxes(len(items), kind)
+    panels = []
+    for (what, payload), box in zip(items, rects):
+        aspect = box[2] / box[3]
+        if what == "content":
+            p = content_panel(payload, aspect)
+        elif what == "cam":
+            tile, person = payload
+            p = {"src": fit_rect(content_box(tile, idx), (person["cx"], person["cy"]), aspect), "mode": "cover"}
+        elif what == "facecam":
+            region, person = payload
+            p = {"src": fit_rect(region, (person["cx"], person["cy"]), aspect, 0.45, person["size"] * 3.0),
+                 "mode": "cover"}
+        elif what == "tight":
+            region, person = payload
+            p = face_panel(region, person, aspect, tight=True)
+        else:  # person
+            region, person = payload
+            p = face_panel(region, person, aspect, tight=False)
+        p = tracked(p, box, a, idx)
+        for k in ("_person", "_region", "_height"):
+            p.pop(k, None)
+        p["box"] = box
+        panels.append(p)
+    faces = [f for p in panels for f in faces_out(p, idx, a)]
+    segments.append({"start": round(t_at(a), 3), "end": round(t_at(b), 3),
+                     "layout": kind, "panels": panels, "faces": faces})
+
+
 for a, b in shots:
     idx = [i for i in range(a, b) if i in grays] or [max(i for i in grays if i <= a)]
+    turns = None  # single_focus: speaker can split one shot into several views, one per speaker turn
     sigs = [signature(tiles_per[i]) for i in range(a, b)]
     common_sig = max(set(sigs), key=sigs.count)
     tiles = tiles_per[a + sigs.index(common_sig)]
@@ -343,6 +512,9 @@ for a, b in shots:
             else:
                 items = [("cam", cam_people[0])]
                 kind = "single"
+                if FOCUS == "speaker" and len(cam_people) > 1:
+                    turns = [(f0, f1, [("cam", (cam_people[k][0], only(cam_people[k][1], f0, f1)))])
+                             for f0, f1, k in speaker_turns([tp[1] for tp in cam_people], a, b)]
         else:
             if show_content:
                 items.append(("content", meme))
@@ -387,6 +559,9 @@ for a, b in shots:
         elif len(people) == 1 or ANGLE == "single":
             kind = "single"
             target = people[0]
+            if FOCUS == "speaker" and len(people) > 1:
+                turns = [(f0, f1, [("person", (region, only(people[k], f0, f1)))])
+                         for f0, f1, k in speaker_turns(people, a, b)]
             if FOCUS == "center":
                 target = {"cx": region[0] + cw / 2, "cy": region[1] + ch * 0.42, "size": people[0]["size"], "pts": []}
             if FOCUS == "content":
@@ -407,34 +582,8 @@ for a, b in shots:
                 group.sort(key=lambda p: p["cx"])
                 items = [("tight", (region, p)) for p in group]
 
-    items = items[:MAX_PANELS]
-    rects = boxes(len(items), kind)
-    panels = []
-    for (what, payload), box in zip(items, rects):
-        aspect = box[2] / box[3]
-        if what == "content":
-            region = payload if not isinstance(payload, tuple) else payload
-            p = content_panel(region, aspect)
-        elif what == "cam":
-            tile, person = payload
-            p = {"src": fit_rect(content_box(tile, idx), (person["cx"], person["cy"]), aspect), "mode": "cover"}
-        elif what == "facecam":
-            region, person = payload
-            p = {"src": fit_rect(region, (person["cx"], person["cy"]), aspect, 0.45, person["size"] * 3.0),
-                 "mode": "cover"}
-        elif what == "tight":
-            region, person = payload
-            p = face_panel(region, person, aspect, tight=True)
-        else:  # person
-            region, person = payload
-            p = face_panel(region, person, aspect, tight=False)
-        p = tracked(p, box, a, idx)
-        for k in ("_person", "_region", "_height"):
-            p.pop(k, None)
-        p["box"] = box
-        panels.append(p)
-    segments.append({"start": round(A.start + a / FPS, 3), "end": round(A.start + b / FPS, 3),
-                     "layout": kind, "panels": panels})
+    for f0, f1, its in turns or [(a, b, items)]:
+        emit(f0, f1, its[:MAX_PANELS], kind, [i for i in idx if f0 <= i < f1] or idx)
 
 # merge neighbours that ended up identical (false cuts)
 merged = []
@@ -445,6 +594,7 @@ for s in segments:
         for p, q in zip(merged[-1]["panels"], s["panels"])
     ):
         merged[-1]["end"] = s["end"]
+        merged[-1]["faces"] = (merged[-1].get("faces", []) + s.get("faces", []))[:12]
         continue
     merged.append(s)
 

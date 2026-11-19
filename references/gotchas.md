@@ -13,9 +13,13 @@
 | A 5-webcam layout read as "meme" | its middle webcam is tall like a phone video | the meme rule requires every other tile to be thumbnail-sized; check `tiles` vs `meme` in the printout |
 | Captions wrap onto two lines | long words in a 3-word group | lower `max_caption_chars` or `words_per_caption` |
 | Caption words drift from speech | tokens file has an extra or missing line | build_clip.py prints both columns: fix where they diverge |
-| Clip starts on the tail of the previous shot | the start time fell 1-5 frames before a camera cut | move the start to the cut time printed by analyze_shots.py |
-| Video/audio out of sync in a section download | section files start on a keyframe | fetch.py uses `force_keyframes_at_cuts`; always pass the printed `--offset` |
-| `npm warn install-scripts ... esbuild` during setup | npm's new script approval | harmless: Remotion bundles fine (setup verifies with a bundle) |
+| Clip starts on the tail of the previous shot | the start time fell 1-5 frames before a camera cut (older versions also timed shots by counting frames after OpenCV's seek, which can be a few frames off) | analyze_shots.py now uses each frame's own timestamp; move the start to the cut time it prints |
+| Video/audio out of sync in a section download | section files start on a keyframe, or the offset was rounded to whole seconds | fetch.py re-encodes the cut (`force_keyframes_at_cuts`) and prints the exact offset (fractions included); always pass it as `--offset` |
+| `no frames between ...` from analyze_shots.py | START/END outside the file, usually a missing or wrong `--offset` for a section file | the message shows the part of the original the file covers |
+| `npm warn install-scripts ... esbuild` during setup | npm's new script approval | harmless when setup prints `[ok] Remotion workspace`: after npm install, setup bundles the workspace once to check |
+| Two people side by side in a close-up framed as one crop between them | older face grouping merged faces within 1.5× face size | a face never joins a person already seen in the same frame; fixed in analyze_shots.py |
+| A re-rendered clip came out as `01 - ...` | older render.py numbered clips by their position in the command | the number now comes from the clip's `--id` (its rank); a re-render keeps the clip's current name |
+| `privacy is 'scheduled' but publish_at is empty` | a scheduled meta without a time | run `youtube_upload.py schedule` and put the time in `publish_at` |
 | Remotion can't load the video (404) | the file is outside the workspace's `public/` | always fetch videos with fetch.py; local files are copied into `public/source/` |
 | Upload stays private | unaudited API project | expected; see references/youtube.md |
 | `quotaExceeded` | 10,000 units/day used up (~6 uploads) | wait for the reset (midnight Pacific time) or request more quota |

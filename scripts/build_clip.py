@@ -1,9 +1,13 @@
 """Combine timed words, the shot layout and the settings into one clip data file for rendering.
 
 Usage:
-  python build_clip.py --run RUN_DIR --shots shots_1.json --start 1100.25 --end 1158.9 \
+  python build_clip.py --run RUN_DIR --shots shots_1.json --start 1100.25 --end 1158.9 --id 1 \
       --title "Clip title" --settings run_settings.json --out clip_1.json \
       [--captions captions_1.tokens.txt | captions_1.phrases.txt] [--emphasis "word,another"]
+  python build_clip.py --run RUN_DIR --start 1100.25 --end 1158.9 --list-words
+      prints the exact words a tokens file must match, one per line (time, word)
+
+--id is the clip's rank (1 = best); the file name number comes from it. Use --rank if the id isn't a number.
 
 Captions come from one of three places:
   (none)          the transcript's own words (fillers/stutters dropped if remove_fillers is on)
@@ -21,6 +25,7 @@ from pathlib import Path
 
 from common import PUBLIC, load_json, parse_time, save_json, utf8
 
+WINDOW_SLACK = 0.05  # a word starting this much before the clip start still belongs to it
 FILLERS = {"um", "uh", "umm", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "mhm"}
 MARKERS = {"हंसी": "laughs", "संगीत": "music", "तालियां": "applause", "हँसी": "laughs"}
 SCHEMES = {"fire": "#FF2D2D", "gold": "#FFD60A", "neon": "#39FF14", "ice": "#4CC9F0", "mono": "#FFFFFF"}
@@ -28,6 +33,43 @@ SCHEMES = {"fire": "#FF2D2D", "gold": "#FFD60A", "neon": "#39FF14", "ice": "#4CC
 
 def bare(w):
     return re.sub(r"[^\w']+", "", w.lower())
+
+
+# censor: words masked in captions (and beeped with censor: bleep), plus anything written masked in a tokens or
+# phrases file ("b***d"). Prefixes catch the usual forms ("fucking", "shitty").
+SWEAR_PREFIXES = ("fuck", "motherfuck", "shit", "bullshit", "bitch", "asshole", "bastard", "cunt", "nigg",
+                  "faggot", "retard", "chutiy", "bhenchod", "behenchod", "bhosd", "madarchod", "maderchod",
+                  "चूतिय", "भेनचोद", "बहनचोद", "मादरचोद", "भोसड")
+SWEAR_WORDS = {"dick", "dickhead", "pussy", "cock", "slut", "whore", "gaand", "gandu", "lund", "lauda", "lavda",
+               "loda", "randi", "गांड", "गांडू", "लौड़ा", "लंड", "रंडी"}
+
+
+def norm(w):
+    """Lower-case with punctuation removed, keeping Devanagari vowel signs (a plain \\w pattern drops them)."""
+    return re.sub(r"[^\wऀ-ॿ']+", "", w.lower())
+
+
+def is_swear(w):
+    n = norm(w)
+    return bool(n) and (n in SWEAR_WORDS or n.startswith(SWEAR_PREFIXES))
+
+
+def is_masked(w):
+    return bool(re.search(r"\w\*+", w))
+
+
+def mask(w):
+    """f**k, f*****g: first and last letter kept, punctuation kept."""
+    m = re.match(r"^(\W*)(.*?)(\W*)$", w)
+    lead, core, trail = m.groups() if m else ("", w, "")
+    if len(core) <= 2:
+        return lead + core[:1] + "*" * (len(core) - 1) + trail
+    return lead + core[0] + "*" * (len(core) - 2) + core[-1] + trail
+
+
+def spoken_in(words, start, end):
+    """The transcript words a clip covers (markers like [Laughter] excluded). Tokens files match these 1:1."""
+    return [w for w in words if start - WINDOW_SLACK <= w["t"] < end and not w.get("m")]
 
 
 def asset(path):
@@ -46,8 +88,8 @@ def asset(path):
 
 
 def caption_words(words, start, end, captions, s, emphasis):
-    window = [w for w in words if start - 0.05 <= w["t"] < end]
-    spoken = [w for w in window if not w.get("m")]
+    window = [w for w in words if start - WINDOW_SLACK <= w["t"] < end]
+    spoken = spoken_in(words, start, end)
     toks = []
     if captions and captions.endswith(".phrases.txt"):
         for line in Path(captions).read_text(encoding="utf-8").splitlines():
@@ -90,13 +132,22 @@ def caption_words(words, start, end, captions, s, emphasis):
     for t in toks:
         if bare(t["w"]) in emph:
             t["emph"] = True
+    bleeps = []
+    if s.get("censor") in ("mask", "bleep"):
+        for t in toks:
+            if is_masked(t["w"]) or is_swear(t["w"]):
+                t["w"] = t["w"] if is_masked(t["w"]) else mask(t["w"])
+                # the word's own sound only: its end time can include the pause after it
+                bleeps.append([round((t["t"] - start - 0.03) * 1000), round((min(t["e"], t["t"] + 0.7) - start) * 1000)])
+    if s.get("censor") != "bleep":
+        bleeps = []
     markers = []
     if s.get("captions_when_silent") == "describe":
         for w in window:
             if w.get("m") and all(abs(w["t"] - t["t"]) > 0.6 for t in toks):
                 inner = w["w"].strip("[] ")
                 markers.append({"t": w["t"], "w": f"[{MARKERS.get(inner, inner.lower())}]"})
-    return toks, markers
+    return toks, markers, [[max(a, 0), b] for a, b in bleeps if b > 0]
 
 
 def paginate(toks, markers, s, start):
@@ -112,8 +163,9 @@ def paginate(toks, markers, s, start):
     for t in toks:
         if cur:
             chars = sum(len(x["w"]) + 1 for x in cur) + len(t["w"])
+            last = re.sub(r"[^\w.,?!]+$", "", cur[-1]["w"])[-1:]  # "khatam! 💀" still ends a sentence
             if (len(cur) >= per or chars > max_chars or t["t"] - cur[-1]["e"] > gap_break
-                    or cur[-1]["w"][-1:] in ".?!" or (style != "line" and cur[-1]["w"][-1:] == ",")):
+                    or last in (".", "?", "!") or (style != "line" and last == ",")):
                 pages.append(cur)
                 cur = []
         cur.append(t)
@@ -133,6 +185,45 @@ def paginate(toks, markers, s, start):
         # stay up at least 0.3 s, but never past the next caption's start (that would make the next one lag)
         a["endMs"] = min(max(a["endMs"], a["startMs"] + 300), b["startMs"])
     return [p for p in out if p["endMs"] > 0]
+
+
+def caption_y(panels, faces, s, out_w, out_h):
+    """caption_position: auto. Start from the default spot of a shot (the line between split views, or 80% down)
+    and move to the first alternative that doesn't cover any of `faces`."""
+    portrait = out_h > out_w
+    scale = min(out_w, out_h) / 1080
+    ys = [p["box"][1] + p["box"][3] for p in panels if p["box"][1] + p["box"][3] < out_h - 1]
+    seam = min(ys, key=lambda y: abs(y - out_h / 2)) if (ys and portrait and len(panels) > 1) else None
+    default = seam if seam is not None else out_h * (0.8 if portrait else 0.84)
+    half = float(s.get("font_size", 108) or 108) * scale * 0.6  # half a caption line (outline included)
+    title_top = s.get("title", True) and s.get("title_position", "top") == "top"
+    cands = [default, out_h * 0.8, out_h * 0.88, out_h * 0.66, out_h * (0.24 if title_top else 0.16)]
+
+    def overlap(y):
+        tot = 0.0
+        for cx, cy, size in faces:
+            # the detector's square runs from the forehead to just under the chin; keep a little margin
+            top, bottom = cy - size * 0.6, cy + size * 0.55
+            tot += max(0.0, min(y + half, bottom) - max(y - half, top))
+        return tot
+
+    best = min(range(len(cands)), key=lambda i: (overlap(cands[i]) > 0, overlap(cands[i]), i))
+    return round(cands[best])
+
+
+def place_captions(pages, segs, s, out_w, out_h, fps):
+    """One height per caption, held while it's on screen, so a caption that runs across a camera cut doesn't jump.
+    It starts from the default spot of the shot the caption mostly sits in and avoids the faces of every shot it
+    touches."""
+    for p in pages:
+        f0, f1 = p["startMs"] * fps / 1000, p["endMs"] * fps / 1000
+        over = [(min(f1, x["to"]) - max(f0, x["from"]), i) for i, x in enumerate(segs)
+                if min(f1, x["to"]) > max(f0, x["from"])]
+        if not over:
+            continue
+        home = segs[max(over)[1]]
+        faces = [f for _, i in over for f in segs[i].get("faces", [])]
+        p["y"] = caption_y(home["panels"], faces, s, out_w, out_h)
 
 
 def style_of(s):
@@ -175,20 +266,28 @@ def main():
     utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--shots", required=True)
+    ap.add_argument("--shots")
     ap.add_argument("--start", required=True)
     ap.add_argument("--end", required=True)
     ap.add_argument("--title", default="")
     ap.add_argument("--id", default="clip")
-    ap.add_argument("--settings", required=True)
+    ap.add_argument("--rank", type=int)
+    ap.add_argument("--list-words", action="store_true")
+    ap.add_argument("--settings")
     ap.add_argument("--captions")
     ap.add_argument("--emphasis", default="")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out")
     a = ap.parse_args()
-    s = load_json(a.settings, {})
     start, end = parse_time(a.start), parse_time(a.end)
-    shots = load_json(a.shots)
     words = load_json(Path(a.run) / "words.json")["words"]
+    if a.list_words:
+        for w in spoken_in(words, start, end):
+            print(f"{w['t']:9.2f}  {w['w']}")
+        return
+    if not (a.shots and a.settings and a.out):
+        sys.exit("--shots, --settings and --out are required (except with --list-words)")
+    s = load_json(a.settings, {})
+    shots = load_json(a.shots)
 
     src_path = Path(shots["source"]["path"]).resolve()
     try:
@@ -220,7 +319,7 @@ def main():
                         keys.append([fr, kx, ky])
                 q["track"] = keys
             panels.append(q)
-        segs.append({"from": f0, "to": f1, "layout": x["layout"], "panels": panels})
+        segs.append({"from": f0, "to": f1, "layout": x["layout"], "panels": panels, "faces": x.get("faces") or []})
     if not segs:
         sys.exit("no shots overlap the clip range: re-run analyze_shots.py for this range")
     segs[0]["from"] = 0
@@ -228,18 +327,25 @@ def main():
     for x, y in zip(segs, segs[1:]):
         y["from"] = x["to"]
 
-    toks, markers = caption_words(words, start, end, a.captions, s, a.emphasis)
+    toks, markers, bleeps = caption_words(words, start, end, a.captions, s, a.emphasis)
     pages = paginate(toks, markers, s, start)
     out_w, out_h = shots["out"]["w"], shots["out"]["h"]
+    if s.get("caption_position", "auto") == "auto":
+        place_captions(pages, segs, s, out_w, out_h, fps)
+    for x in segs:
+        x.pop("faces", None)
+    m = re.search(r"\d+", a.id)
+    rank = a.rank or (int(m.group()) if m else None)
     clip = {
-        "id": a.id, "title": a.title, "fps": fps, "width": out_w, "height": out_h,
+        "id": a.id, "rank": rank, "title": a.title, "fps": fps, "width": out_w, "height": out_h,
         "src": rel, "sourceW": shots["source"]["w"], "sourceH": shots["source"]["h"],
         "startFrame": round((start - offset) * fps), "durationInFrames": dur,
-        "segments": segs, "pages": pages, "style": style_of(s),
+        "segments": segs, "pages": pages, "bleeps": bleeps, "style": style_of(s),
         "meta": {"start": start, "end": end},
     }
     save_json(a.out, clip)
-    print(f"{a.id}: {dur / fps:.1f}s, {out_w}x{out_h}@{fps}, {len(segs)} shots, {len(pages)} caption groups")
+    print(f"{a.id}: {dur / fps:.1f}s, {out_w}x{out_h}@{fps}, {len(segs)} shots, {len(pages)} caption groups"
+          + (f", {len(bleeps)} bleeps" if bleeps else ""))
     for p in pages[:6]:
         print(f"  {p['startMs'] / 1000:6.2f}  " + " ".join(w["text"] for w in p["words"]))
 

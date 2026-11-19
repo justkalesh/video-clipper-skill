@@ -25,6 +25,8 @@ run_mode: assisted            # assisted  = you paste a link; it stops to confir
                               # autopilot = you paste a link and it does the rest: finds the moments, renders,
                               #             writes title + caption + hashtags, and uploads to your channel
 log_file: out/clips/runs.md   # every run's video profile, chosen clips, titles and upload links
+                              # (relative paths start from the folder you opened Claude Code in; use a full
+                              #  path such as ~/Videos/Clips/runs.md to always use the same place)
 
 # ─────────────────────────────── FINDING CLIPS ──────────────────────────────
 moment_finder: ask            # who decides which parts of the video become clips:
@@ -65,7 +67,11 @@ multi_layout: auto            # how a split is arranged:
                               # auto | stack (top/bottom) | grid (2x2) | main_plus_row (one big + small ones below)
 max_panels: 4                 # most views on screen at once: 1–5
 single_focus: auto            # in a single view, who or what to show:
-                              # auto | speaker (whoever is talking) | biggest_face | content (gameplay/slides) | center
+                              # auto / biggest_face = the biggest face in each shot
+                              # speaker = whoever is talking, read from mouth movement in the picture; in a shot
+                              #           with several people the view follows the conversation, holding
+                              #           each person at least 2 s
+                              # content = gameplay/slides | center = the middle of the frame
 screen_content: auto          # when part of the frame is content, not a person
                               # (gameplay, slides, a screen share, a video being watched):
                               # auto | fill (the content full frame) | with_faces (content + face views)
@@ -88,13 +94,15 @@ caption_style: karaoke        # karaoke = 2–3 words, the spoken word lights up
                               # line    = plain subtitle line, no highlight
                               # boxed   = words on a solid rounded box
                               # none    = no captions
-                              # auto    = Claude picks to suit the video's pace
+                              # auto    = Claude picks to suit the video's pace (karaoke if left undecided)
 captions_when_silent: hide    # hide = no captions over moments with no speech (gameplay, music, crowd)
                               # describe = short labels like [crowd cheers] / [music]
 words_per_caption: 3          # 1–5 (pop forces 1)
 max_caption_chars: 16         # longer groups get split so captions never wrap onto 2 lines
 caption_case: as_spoken       # as_spoken | upper | lower
-caption_position: auto        # auto = clear of faces and on-screen action (on the split line for split views)
+caption_position: auto        # auto = on the split line for split views, 80% down otherwise; moved up or down
+                              #        when that spot would cover a face. Each caption keeps one height while
+                              #        it's on screen, even across a camera cut
                               # top | middle | bottom
 font: "Montserrat"            # any Google Font name (loaded at render time, works on every OS) or an installed font
                               # e.g. "Anton", "Bebas Neue", "Poppins", or "Segoe UI Black" (Windows only)
@@ -103,6 +111,7 @@ remove_fillers: true          # drop "umm", "uh", repeated stutters
 emphasis_words: true          # key words get the accent colour even when they aren't being spoken
 emoji: off                    # off | light (at most 1 per caption, only where it fits)
 censor: off                   # off | mask (f**k in captions) | bleep (also beep the audio)
+                              # (common English and Hindi swear words, plus any word Claude writes masked)
 
 # ─────────────────────────────── COLOURS ────────────────────────────────────
 color_scheme: fire            # fire   = white text, red active word, black outline
@@ -132,7 +141,11 @@ end_card: off                 # off | text shown for the last 1.5 s, e.g. "Full 
 
 # ─────────────────────────────── AUDIO ──────────────────────────────────────
 normalize_loudness: true      # level every clip to the same loudness (-14 LUFS, what Reels/Shorts expect)
-voice_boost: auto             # auto | on | off   (lift speech over game sound, music or crowd noise)
+voice_boost: auto             # on  = lift speech over game sound, music or crowd noise (EQ + gentle compression)
+                              # off = leave the mix as it is
+                              # auto = Claude turns it on for loud gameplay, music or crowds; if left undecided,
+                              #        it's on for clips where someone talks over gameplay or another video
+                              # (background_music is mixed in after the boost, so it's never boosted)
 fade_ms: 250                  # fade in/out at the clip edges, 0 = hard cut
 background_music: off         # off | path to an audio file (sits under the original audio)
 music_volume: 0.08            # 0–1, only used when background_music is set
@@ -152,11 +165,13 @@ cleanup: full                 # what to delete once the clips are finished (and 
                               #          their covers/subtitles, posts.md, the post files in _data, the run log
                               # source = only the long video (keep transcripts to cut more clips later)
                               # none   = keep everything
-output_folder: out/clips
+output_folder: out/clips      # relative = from the folder you opened Claude Code in; a full path
+                              # (e.g. ~/Videos/Clips) always uses the same place
 file_name: "{n:02d} - {title}"  # clip file names: {n} rank, {title} the clip's title, {slug}, {video_id}, {date}
                               # (organize.py renames them to the final post title at the end)
 export_srt: false             # also save a .srt caption file next to each clip
-export_thumbnail: true        # save a cover image (best frame + title) per clip
+export_thumbnail: true        # save a cover image per clip: the sharpest of 5 frames, with the on-screen
+                              # title in it (when the title shows for the whole clip)
 quality: high                 # draft (fast, small) | high | max (largest files)
 
 # ─────────────────────────────── TITLE, CAPTION & HASHTAGS ──────────────────
@@ -183,7 +198,8 @@ honest_titles: true           # titles and thumbnails only promise what the clip
 
 # ─────────────────────────────── PUBLISHING ─────────────────────────────────
 upload_to: none               # none | youtube   (more platforms can be added later)
-youtube_channel: default      # default (the account you sign in with once) | a channel name if you manage several
+youtube_channel: default      # default (the channel you sign in with once) | a channel name if you manage
+                              # several: each gets its own sign-in, and uploads stop if the wrong one is connected
 privacy: private              # private | unlisted | public | scheduled
 schedule: off                 # off | "18:00 daily" | "every 4h from 10:00" | best_times
                               # best_times = spread uploads over the times your channel's viewers are most active

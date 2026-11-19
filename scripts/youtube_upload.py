@@ -5,34 +5,49 @@ One-time setup (the channel owner does this; see references/youtube.md):
   python youtube_upload.py whoami                                            # shows the connected channel
 
 Uploading:
-  python youtube_upload.py upload out/clips/x/1_title.mp4 --meta out/clips/x/1_title.meta.json [--dry-run]
+  python youtube_upload.py upload "OUT/01 - Title.mp4" --meta "OUT/_data/01 - Title.meta.json" [--dry-run]
   python youtube_upload.py publish <video_id> --privacy public               # after the owner approves a private upload
   python youtube_upload.py publish <video_id> --at 2026-11-20T18:00:00+00:00 # schedule it instead
   python youtube_upload.py schedule --count 5 --settings run_settings.json   # print publish times for N clips
 
+Several channels: add --channel "<channel name>" (the youtube_channel setting) to every command. Each channel
+keeps its own sign-in; at `auth`, pick that channel on Google's screen. Uploads stop if the signed-in channel
+isn't the one named.
+
 The .meta.json file (written by Claude per clip):
   {"title", "description", "hashtags": [...], "tags": [...], "category": "Comedy",
-   "privacy": "private|unlisted|public", "publish_at": "ISO time or null", "playlist": "name or null",
+   "privacy": "private|unlisted|public|scheduled", "publish_at": "ISO time with timezone, needed for scheduled",
+   "playlist": "name or null",
    "made_for_kids": false, "notify_subscribers": true, "altered_content": false, "language": "hi",
    "pinned_comment": "a comment to pin under the video", "best_time": "e.g. today 18:00-21:00 local",
-   "platforms": {"instagram": {"caption": "...", "hashtags": [...]}, "tiktok": {"caption": "...", "hashtags": [...]}}}
+   "platforms": {"instagram": {"caption": "...", "hashtags": [...]}}}
 After an upload, a "youtube" block with the video id and link is written back into it.
+The API can't post or pin comments with this sign-in: the pinned comment is for the owner to post and pin by hand
+(YouTube app or Studio) once the video is public.
 """
 import argparse
 import datetime as dt
+import http.client
 import json
 import random
 import re
 import shutil
+import socket
+import ssl
 import sys
 import time
 from pathlib import Path
 
-from common import HOME, load_json, probe, save_json, utf8
+from common import HOME, load_json, probe, save_json, slug, utf8
 
 YT_DIR = HOME / "youtube"
 SECRET = YT_DIR / "client_secret.json"
-TOKEN = YT_DIR / "token.json"
+CHANNEL = "default"
+
+
+def token_path():
+    return YT_DIR / ("token.json" if CHANNEL in ("", "default") else f"token-{slug(CHANNEL, 60)}.json")
+
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"]
 CATEGORIES = {
     "film & animation": 1, "autos & vehicles": 2, "music": 10, "pets & animals": 15, "sports": 17,
@@ -57,16 +72,52 @@ def service():
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
-    if not TOKEN.exists():
-        sys.exit("No YouTube channel connected yet. Run: python youtube_upload.py auth --client-secret <file>")
-    creds = Credentials.from_authorized_user_file(str(TOKEN), SCOPES)
+    token = token_path()
+    if not token.exists():
+        extra = f' --channel "{CHANNEL}"' if CHANNEL not in ("", "default") else ""
+        sys.exit(f"No YouTube channel connected yet. Run: python youtube_upload.py auth --client-secret <file>{extra}")
+    creds = Credentials.from_authorized_user_file(str(token), SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            TOKEN.write_text(creds.to_json(), encoding="utf-8")
+            token.write_text(creds.to_json(), encoding="utf-8")
         else:
             sys.exit("The YouTube sign-in has expired. Run auth again.")
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
+
+
+def channel_check(yt):
+    """With a named channel, make sure the sign-in belongs to it before changing anything."""
+    if CHANNEL in ("", "default"):
+        return
+    items = yt.channels().list(part="snippet", mine=True).execute().get("items", [])
+    names = [c["snippet"]["title"] for c in items]
+    if not any(n.strip().lower() == CHANNEL.strip().lower() for n in names):
+        sys.exit(f"Signed in to {names or 'no channel'}, not '{CHANNEL}'. Run auth --channel \"{CHANNEL}\" and pick "
+                 "that channel on Google's screen.")
+
+
+def check_schedule(meta):
+    """privacy + publish_at as YouTube accepts them: (privacyStatus, publishAt or None). Exits with a clear message
+    instead of letting the API reject the upload."""
+    privacy = str(meta.get("privacy") or "private").strip().lower()
+    at = meta.get("publish_at")
+    if privacy not in ("private", "unlisted", "public", "scheduled"):
+        sys.exit(f"privacy '{privacy}' isn't one of private | unlisted | public | scheduled")
+    if privacy == "scheduled" and not at:
+        sys.exit("privacy is 'scheduled' but publish_at is empty: run `schedule` and put a time in publish_at")
+    if not at:
+        return privacy, None
+    try:
+        when = dt.datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+    except ValueError:
+        sys.exit(f"publish_at '{at}' isn't an ISO time like 2026-11-20T18:00:00+05:30")
+    if when.tzinfo is None:
+        sys.exit(f"publish_at '{at}' has no timezone: add one, like +05:30 or Z")
+    if when <= dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5):
+        sys.exit(f"publish_at '{at}' is in the past (or under 5 minutes away): pick a later time")
+    # YouTube publishes a scheduled video by switching it from private at that time
+    return "private", when.isoformat(timespec="seconds")
 
 
 def cmd_auth(secret):
@@ -79,7 +130,7 @@ def cmd_auth(secret):
         sys.exit("Pass --client-secret with the OAuth client file downloaded from Google Cloud (see references/youtube.md)")
     flow = InstalledAppFlow.from_client_secrets_file(str(SECRET), SCOPES)
     creds = flow.run_local_server(port=0, prompt="consent")
-    TOKEN.write_text(creds.to_json(), encoding="utf-8")
+    token_path().write_text(creds.to_json(), encoding="utf-8")
     cmd_whoami()
 
 
@@ -89,6 +140,7 @@ def cmd_whoami():
     for c in r.get("items", []):
         print(json.dumps({"channel": c["snippet"]["title"], "id": c["id"],
                           "subscribers": c["statistics"].get("subscriberCount")}, ensure_ascii=False))
+    channel_check(yt)
 
 
 def description_of(meta):
@@ -116,6 +168,8 @@ def playlist_id(yt, name):
 
 
 def cmd_upload(path, meta_path, dry):
+    if not Path(path).is_file():
+        sys.exit(f"{path} not found")
     meta = load_json(meta_path)
     if not meta:
         sys.exit(f"{meta_path} not found")
@@ -127,9 +181,9 @@ def cmd_upload(path, meta_path, dry):
         if t and total + len(t) + 3 <= 480:  # YouTube's tag limit is 500 characters in total
             tags.append(t)
             total += len(t) + 3
-    publish_at = meta.get("publish_at")
+    privacy, publish_at = check_schedule(meta)
     status = {
-        "privacyStatus": "private" if publish_at else meta.get("privacy", "private"),
+        "privacyStatus": privacy,
         "selfDeclaredMadeForKids": bool(meta.get("made_for_kids", False)),
         "containsSyntheticMedia": bool(meta.get("altered_content", False)),
     }
@@ -149,6 +203,14 @@ def cmd_upload(path, meta_path, dry):
     from googleapiclient.errors import HttpError
     from googleapiclient.http import MediaFileUpload
     yt = service()
+    channel_check(yt)
+    # network trouble only (a reset, timeout, DNS or TLS hiccup); anything else, like a file error, stops at once
+    net_errors = (ConnectionError, TimeoutError, socket.gaierror, ssl.SSLError, http.client.HTTPException)
+    try:
+        import httplib2
+        net_errors += (httplib2.HttpLib2Error,)
+    except ImportError:
+        pass
     req = yt.videos().insert(part="snippet,status", body=body,
                              notifySubscribers=bool(meta.get("notify_subscribers", True)),
                              media_body=MediaFileUpload(str(path), mimetype="video/mp4",
@@ -168,6 +230,13 @@ def cmd_upload(path, meta_path, dry):
                 time.sleep(2 ** tries + random.random())
                 continue
             raise
+        except net_errors as e:  # dropped connection, timeout, reset: the resumable upload continues where it was
+            if tries >= 8:
+                raise
+            tries += 1
+            wait = min(60, 2 ** tries) + random.random()
+            print(f"\n  connection problem ({type(e).__name__}), retrying in {wait:.0f}s...", flush=True)
+            time.sleep(wait)
     print()
     vid = resp["id"]
     info = probe(path)
@@ -190,6 +259,9 @@ def cmd_upload(path, meta_path, dry):
 
 def cmd_publish(vid, privacy, at):
     yt = service()
+    channel_check(yt)
+    if at:
+        _, at = check_schedule({"privacy": "scheduled", "publish_at": at})
     cur = yt.videos().list(part="status", id=vid).execute()["items"][0]["status"]
     body = {"privacyStatus": "private" if at else privacy,
             "selfDeclaredMadeForKids": cur.get("selfDeclaredMadeForKids", False)}
@@ -246,7 +318,10 @@ if __name__ == "__main__":
     p = sub.add_parser("schedule")
     p.add_argument("--count", type=int, required=True)
     p.add_argument("--settings", required=True)
+    for p in sub.choices.values():
+        p.add_argument("--channel", default="default", help="the youtube_channel setting")
     a = ap.parse_args()
+    CHANNEL = a.channel or "default"
     if a.cmd == "auth":
         cmd_auth(a.client_secret)
     elif a.cmd == "whoami":

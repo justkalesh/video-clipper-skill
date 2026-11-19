@@ -23,7 +23,9 @@ type Key = [number, number, number]; // frame (from segment start), src x, src y
 type Panel = { box: Rect; src: Rect; mode?: "cover" | "contain"; track?: Key[] };
 type Segment = { from: number; to: number; layout: string; panels: Panel[] };
 type Word = { text: string; startMs: number; endMs: number; emph?: boolean };
-type Page = { startMs: number; endMs: number; words: Word[]; marker?: boolean };
+// y: caption height chosen by build_clip.py (caption_position: auto), held for the whole caption so it doesn't
+// jump at a camera cut and stays off faces
+type Page = { startMs: number; endMs: number; words: Word[]; marker?: boolean; y?: number };
 
 export type ClipStyle = {
   captionStyle: "karaoke" | "pop" | "line" | "boxed" | "none";
@@ -292,7 +294,7 @@ const Captions: React.FC<{ data: ClipData; y: number; scale: number }> = ({ data
         position: "absolute",
         left: 40 * scale,
         right: 40 * scale,
-        top: y,
+        top: s.captionPosition === "auto" && page.y !== undefined ? page.y : y,
         transform,
         display: "flex",
         justifyContent: "center",

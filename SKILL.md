@@ -38,7 +38,9 @@ in chat for this run > settings.md > `auto` (you decide from the video). Make th
 python SKILL/scripts/settings.py --set clip_count=3 --set orientation=square --out RUN/settings.json
 ```
 Pass every one-off instruction from the chat as a `--set`. After step 3, replace each `auto` you can decide
-with a concrete value and save again, so every later script sees real values.
+with a concrete value and save again, so every later script sees real values. (The scripts treat an `auto` left
+over as the plain default: karaoke captions, no voice boost, the biggest face.) `settings.py` turns
+`output_folder` and `log_file` into absolute paths, so read them from `RUN/settings.json`.
 
 **Ask first, in one message, before any analysis.** Both questions come before you download or study anything,
 so the user decides how much of the work is theirs:
@@ -62,11 +64,14 @@ ranges to word boundaries; a few tenths of a second is fine, never more without 
 
 ```bash
 python SKILL/scripts/fetch.py info "<url or file>"          # id, title, length, language, subtitle tracks
-python SKILL/scripts/fetch.py subs "<url>"                  # original-language subtitles -> RUN/subs.vtt
-python SKILL/scripts/transcript.py subs RUN/subs.vtt --out RUN
+python SKILL/scripts/fetch.py subs "<url>"                  # original-language subtitles, e.g. RUN/subs.hi-orig.vtt
+python SKILL/scripts/transcript.py subs "<the subs path it printed>" --out RUN
 ```
-- No subtitles, a local file, or `transcript_source: whisper`: use `fetch.py audio`, then
-  `transcript.py whisper RUN/audio.m4a --out RUN --model <whisper_model>`.
+Every fetch command prints the paths it wrote; use those. The subtitle file is named after its track
+(`subs.hi-orig.vtt`, `subs.en.vtt`), and transcript.py reads the language from that name, so don't rename it.
+- No subtitles, a local file, or `transcript_source: whisper`: run `fetch.py audio`, then
+  `transcript.py whisper "<the audio path it printed>" --out RUN --model <whisper_model>`. The audio is usually
+  `RUN/audio.m4a`, but some sites only offer `.webm` or `.opus`.
 - Download the video: with `download_mode: full`, or `auto` and a video under ~45 minutes, run
   `fetch.py video "<url>" --quality <download_quality>` now. Otherwise download only the picked ranges in step 5.
 - Measure what happens second by second (loudness spikes = laughter, cheers, shouting, game action):
@@ -112,13 +117,15 @@ With `picking: ask`, show the list (and the profile) and wait. With `picking: au
 ## 5. Frame each clip
 
 If the video wasn't downloaded in full, fetch only the picked ranges, padded by 2 s:
-`fetch.py video "<url>" --sections "1098-1161,1407-1448"`. Each file's offset is printed. Pass it as `--offset`.
+`fetch.py video "<url>" --sections "1098.5-1161,1407-1448"`. It prints each file with its `offset` (the exact
+start of the range, fractions included). Pass that file as VIDEO and its offset as `--offset`.
 
 ```bash
 python SKILL/scripts/analyze_shots.py VIDEO START END RUN/shots_1.json --settings RUN/settings.json [--offset O]
 ```
 It prints one line per shot: the layout it chose (tiles, meme, content_face, people, single, content) and the
-crops (`~` = the crop follows a moving person). Check it against the picture:
+crops (`~` = the crop follows a moving person). Shot times are the frames' real timestamps, so a cut it prints
+is where the picture really changes. Check it against the picture:
 ```bash
 ffmpeg -v error -y -ss START -t LENGTH -i VIDEO -vf "fps=1/2,scale=320:-2,tile=6x5" -frames:v 1 RUN/range_1.jpg
 ```
@@ -134,12 +141,20 @@ Decide the caption words per clip. `references/captions.md` has the rules and th
   word per transcript word, with English words kept in English.
 - **Translated captions**: write a `.phrases.txt` with timed lines.
 
+For a tokens file, get the exact words it must match (one line each) from the same code that checks it:
+```bash
+python SKILL/scripts/build_clip.py --run RUN --start S --end E --list-words
+```
+
 Write a short title for the on-screen title card, in the caption language. Then:
 ```bash
 python SKILL/scripts/build_clip.py --run RUN --shots RUN/shots_1.json --start S --end E --id 1 \
   --title "On-screen title" --settings RUN/settings.json --out RUN/clip_1.json [--captions RUN/captions_1.tokens.txt]
 ```
-A word-count mismatch prints both columns side by side: fix the lines where they drift and run it again.
+`--id` is the clip's rank (1 = best): it becomes the number in the file name. A word-count mismatch prints both
+columns side by side: fix the lines where they drift and run it again. With `censor` on, swear words are masked
+in the captions (`f**k`), and also beeped with `censor: bleep`. Words you write masked in a tokens or phrases
+file (`b***d`) count too.
 
 ## 7. Render and check
 
@@ -154,8 +169,10 @@ clip to `OUT/_data/checks/`. **Open every check sheet** (read the image) before 
 - captions covering faces
 - captions wrapping onto two lines
 
-Fix the shots JSON or the settings, rebuild that one clip and render it again. Problems in the summary line
-(wrong size, no audio, wrong length) must be fixed, not reported.
+Fix the shots JSON or the settings, rebuild that one clip and render it again on its own
+(`render.py RUN/clip_3.json ...`). It keeps its number and its current file name, even after organize.py
+renamed it, and replaces the old files. Problems in the summary line (wrong size, no audio, wrong length) must be
+fixed, not reported.
 
 (Don't delete anything yet: re-cuts need the source and the run files. Cleanup is the last step.)
 
@@ -167,13 +184,15 @@ post text for every platform in `post_platforms`. Every clip gets the full set a
   question (the call to action), and the credit line
 - **hashtags**: a few relevant ones, the strongest first
 - **search tags**: keywords people actually type
-- a **pinned comment** that starts a conversation
+- a **pinned comment** that starts a conversation. The owner posts and pins it by hand: the API can't pin comments
 - a **suggested posting time**
-- an **Instagram Reels caption** and a **TikTok caption**, each written for that app (see `references/youtube.md`)
+- a caption for every other app in `post_platforms` (by default an **Instagram Reels caption**), each written for
+  that app (see `references/youtube.md`)
 
 Read `references/youtube.md` for how to write them. In short:
 - With `trend_research: on`, run `trends.py --query "<clip topic>" --region <trend_region> --shorts` for each
-  topic. Exit code 2 means no API access: use web search for what's trending instead.
+  topic (add `--channel "<youtube_channel>"` when it isn't `default`). Exit code 2 means no API access: use web
+  search for what's trending instead.
 - Title: the clip's hook in at most `title_max_chars` characters, in `metadata_language`, front-loaded,
   and honest. `honest_titles` is about reach as well as rules: viewers who feel tricked swipe away and YouTube
   notices.
@@ -188,8 +207,11 @@ the post text. Upload with the renamed paths it prints.
 
 - `youtube_upload.py whoami`. If no channel is connected, walk the user through the one-time setup in
   `references/youtube.md`. They do the Google sign-in themselves; never handle their password.
+- When `youtube_channel` isn't `default`, add `--channel "<youtube_channel>"` to every youtube_upload.py command.
+  Each channel has its own sign-in, and the script stops if the signed-in channel is a different one.
 - Publish times: `youtube_upload.py schedule --count N --settings RUN/settings.json`. Put the time into each
-  meta's `publish_at` when `privacy: scheduled`.
+  meta's `publish_at` when `privacy: scheduled`. The upload refuses `scheduled` without a time, a time with no
+  timezone, or a time in the past, before anything is sent.
 - `review_before_publish: true`: upload everything as private, give the user the links, and wait for an OK
   before running `youtube_upload.py publish <id>` (or `--at <time>`). With `false`, upload with the final privacy.
 - `youtube_upload.py upload <mp4> --meta <meta.json>` per clip. Respect `max_uploads_per_day`. The free API
@@ -212,7 +234,7 @@ python SKILL/scripts/cleanup.py <video-id> --out "OUT" --level full     # or --l
 - the run folder: subtitles, transcripts, word timings, signals, profile, overview/range frames, shots, caption
   files, clip data
 - the check sheets and render results
-- the renderer's temporary files
+- this run's renderer temporary files (other runs going on at the same time keep theirs)
 
 It keeps:
 - the clips with their covers and subtitles
@@ -232,7 +254,7 @@ Then report to the user:
 hand, so put the complete post text for every clip in the reply itself, ready to copy. Don't make them open
 files for it. Per clip:
 - YouTube title, description (hashtags included) and tags
-- the Instagram caption and the TikTok caption
+- the caption for each other app in `post_platforms` (Instagram by default)
 - the pinned comment and the suggested time
 
 Use one copyable code block per field. Also point to `posts.md`, which holds the same text.

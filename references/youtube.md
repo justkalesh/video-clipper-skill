@@ -17,6 +17,10 @@ in themselves; never ask for their password.
    so "Continue" is fine.
 6. `youtube_upload.py whoami` shows the connected channel. The sign-in is saved in `~/.video-clipper/youtube/`.
 
+**Several channels on one Google account** (brand accounts): set `youtube_channel` to the channel's name and run
+`auth --channel "<name>"` once per channel, picking that channel on Google's screen. Each gets its own saved
+sign-in, and every later command with `--channel "<name>"` checks it's still that channel before changing anything.
+
 Optional, for trend lookups without spending the channel's sign-in: **Credentials → Create credentials →
 API key**, then save it in `~/.video-clipper/youtube/api_key.txt` (or the `YOUTUBE_API_KEY` env var).
 
@@ -84,6 +88,8 @@ Keep the total under 480 characters.
 
 **Pinned comment.** One line that starts a conversation: a question, a hot take, or "part 2?". YouTube ranks
 Shorts partly on engagement, and the creator's own pinned comment is the first thing people reply to.
+The API can't pin comments, so the skill doesn't post it: the owner posts it from the channel and pins it by hand
+(YouTube app or Studio → the comment's ⋮ menu → Pin) once the video is public. It's in posts.md, ready to copy.
 - Example: "Be honest: would you have noticed the worn-out 9? 👀"
 
 **Suggested posting time** (`best_time`), when posting by hand:

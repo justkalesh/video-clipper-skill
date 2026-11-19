@@ -2,22 +2,26 @@
 
 Usage:
   python fetch.py info  <url-or-file>                        -> runs/<id>/info.json, prints the id
-  python fetch.py subs  <url> [--lang hi]                     -> runs/<id>/subs.<lang>.vtt (original-language track)
-  python fetch.py audio <url-or-file>                         -> runs/<id>/audio.m4a (for Whisper / loudness)
+  python fetch.py subs  <url> [--lang hi]                     -> runs/<id>/subs.<track>.vtt, e.g. subs.hi-orig.vtt
+  python fetch.py audio <url-or-file>                         -> runs/<id>/audio.<ext> (m4a, or webm on some sites)
   python fetch.py video <url-or-file> [--quality 1080]        -> workspace/public/source/<id>.mp4 (whole video)
-  python fetch.py video <url> --sections "754-812,1100-1160"  -> one file per range, cut on exact frames
-Every command prints a JSON line describing what it wrote.
+  python fetch.py video <url> --sections "754-812,1100.5-1160" -> one file per range, cut on exact frames
+Every command prints a JSON line describing what it wrote. Use the paths it prints: file names depend on the
+subtitle track and the formats the site offers. For sections, pass each file's printed "offset" to
+analyze_shots.py --offset (it is the exact start of the range, fractions included).
 
 (Deleting downloads when a run is finished: see cleanup.py.)
 """
 import argparse
+import copy
 import json
+import re
 import shutil
 import sys
 import time
 from pathlib import Path
 
-from common import PUBLIC, RUNS, load_json, probe, run, save_json, slug, utf8, need, video_folder
+from common import PUBLIC, RUNS, load_json, need, parse_time, probe, run, save_json, slug, utf8, video_folder
 
 
 def is_local(src):
@@ -25,7 +29,10 @@ def is_local(src):
 
 
 def local_id(path):
-    return "local-" + slug(Path(path).stem, 50)
+    """Stable per file location, so two different files that share a name don't share a run folder."""
+    import hashlib
+    h = hashlib.sha1(str(Path(path).resolve()).lower().encode("utf-8")).hexdigest()[:6]
+    return f"local-{slug(Path(path).stem, 44)}-{h}"
 
 
 def ydl(opts):
@@ -42,11 +49,16 @@ def with_retry(fn, tries=3):
     for i in range(tries):
         try:
             return fn()
-        except Exception as e:  # YouTube rate-limits subtitle downloads (HTTP 429)
-            if "429" in str(e) and i < tries - 1:
+        except Exception as e:
+            text = str(e)
+            if i < tries - 1 and "429" in text:  # YouTube rate-limits subtitle downloads
                 wait = 20 * (i + 1)
                 print(f"rate-limited, retrying in {wait}s...", file=sys.stderr, flush=True)
                 time.sleep(wait)
+                continue
+            if i < tries - 1 and "ffmpeg exited" in text:  # a dropped stream mid-cut; usually fine on a retry
+                print("ffmpeg failed on the stream, retrying...", file=sys.stderr, flush=True)
+                time.sleep(5)
                 continue
             raise
 
@@ -138,7 +150,9 @@ def cmd_video(src, quality, sections):
     if is_local(src):
         vid = local_id(src)
         out = dest / f"{vid}{Path(src).suffix.lower()}"
-        if not out.exists():
+        st = Path(src).stat()
+        # copy again when the file changed since the last copy (same size and time = same file)
+        if not out.exists() or out.stat().st_size != st.st_size or int(out.stat().st_mtime) != int(st.st_mtime):
             shutil.copy2(src, out)
         print(json.dumps({"id": vid, "files": [{"path": str(out), "offset": 0.0}]}))
         return
@@ -151,16 +165,23 @@ def cmd_video(src, quality, sections):
         import yt_dlp.utils as u
         ranges = []
         for part in sections.split(","):
-            a, b = part.split("-")
-            ranges.append((float(a), float(b)))
-        opts.update({"download_ranges": u.download_range_func(None, ranges), "force_keyframes_at_cuts": True,
-                     "outtmpl": str(dest / "%(id)s_%(section_start)d.%(ext)s")})
-        with ydl(opts) as y:
-            info = with_retry(lambda: y.extract_info(src, download=True))
-        vid = info["id"]
+            a, b = [parse_time(x) for x in re.split(r"\s*-\s*(?=\d)", part.strip(), maxsplit=1)]
+            ranges.append((a, b))
+        # look the video up once (fewer requests, less risk of YouTube's rate limit), then cut every range from it
+        with ydl({}) as y:
+            raw = with_retry(lambda: y.extract_info(src, download=False, process=False))
+        vid = raw["id"]
         for a, b in ranges:
-            f = dest / f"{vid}_{int(a)}.mp4"
-            files.append({"path": str(f), "offset": float(int(a)), "range": [a, b], "exists": f.exists()})
+            # one download per range, named by its start in milliseconds: the file starts exactly at `a`
+            # (force_keyframes_at_cuts re-encodes the cut), and two ranges never share a file name
+            ms = int(round(a * 1000))
+            tmpl = str(dest / f"{vid}_{ms}").replace("%", "%%") + ".%(ext)s"
+            o = dict(opts, download_ranges=u.download_range_func(None, [(a, b)]), force_keyframes_at_cuts=True,
+                     outtmpl=tmpl)
+            with ydl(o) as y:
+                with_retry(lambda: y.process_ie_result(copy.deepcopy(raw), download=True))
+            f = dest / f"{vid}_{ms}.mp4"
+            files.append({"path": str(f), "offset": a, "range": [a, b], "exists": f.exists()})
     else:
         opts["outtmpl"] = str(dest / "%(id)s.%(ext)s")
         with ydl(opts) as y:

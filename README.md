@@ -36,7 +36,7 @@ One folder per source video, named after it, e.g. `out/clips/Why GTA 6 Graphics 
 | `01 - <title>.mp4` | The finished clip, named after its post title: framed, captioned, loudness levelled for Shorts/Reels |
 | `01 - <title>.jpg` | Its cover image |
 | `01 - <title>.srt` | Subtitles (if `export_srt` is on) |
-| `_data/01 - <title>.meta.json` | Post text and upload info: YouTube title, description, hashtags, tags; Instagram and TikTok captions; pinned comment; suggested posting time |
+| `_data/01 - <title>.meta.json` | Post text and upload info: YouTube title, description, hashtags, tags; Instagram caption (and TikTok, if in `post_platforms`); pinned comment; suggested posting time |
 | `posts.md` | All of that, copy-ready, for every clip, with YouTube links once uploaded |
 | `_data/checks/01 - <title>.jpg` | An 8-frame contact sheet used to check the clip |
 | `_data/render_results.json` | Size, length and audio level of every render |
@@ -150,7 +150,7 @@ In **autopilot** mode it does everything without stopping.
      │
      ▼
  8. POST TEXT ─── trends → YouTube title/description/hashtags/tags, ──────────── trends.py + Claude, organize.py
-     │                Instagram + TikTok captions, pinned comment, posting time
+     │                Instagram caption, pinned comment, posting time
      ▼
  9. UPLOAD ─── private for review, or scheduled/public ───────────────────────── youtube_upload.py
      │
@@ -305,9 +305,14 @@ Every decision is written to `shots_N.json`, which can be edited by hand.
 - the style
 
 `render.py` bundles the Remotion project once, then renders each clip with that data. After that it:
-- levels loudness to −14 LUFS, what Shorts, Reels and TikTok normalise to
-- saves the cover image and `.srt`
+- processes the audio: optional voice boost (`voice_boost`), beeps over censored words (`censor: bleep`), then
+  background music (added after the boost, so it isn't boosted), then levels loudness to −14 LUFS (what Shorts
+  and Reels normalise to) in two passes, so the level is accurate
+- saves the cover image (the sharpest of five frames) and `.srt`
 - **checks** size, length and audio, and makes an 8-frame contact sheet
+
+A clip's number comes from its rank, so re-rendering one clip on its own keeps its number and file name.
+Temporary files are kept per video, so two runs can render at the same time.
 
 Claude looks at every contact sheet, checking faces, layout choice, captions over faces and wrapping. It fixes and
 re-renders any clip that's off.
@@ -328,9 +333,9 @@ source keeps its own rate, because raising it would make motion stutter.
 - **Everything else a short needs:**
   - a hook line and a comment question (call to action) in every description
   - search tags
-  - a pinned comment that starts a conversation
+  - a pinned comment that starts a conversation (you post and pin it yourself: the API can't pin comments)
   - a suggested posting time
-  - separate captions written for Instagram Reels and TikTok (`post_platforms`)
+  - a separate caption for each other app in `post_platforms` (Instagram Reels by default; TikTok if you add it)
 - No one can guarantee a clip goes viral. The skill does the things that help: hook, title, hashtags,
   engagement prompts and timing.
 
@@ -443,8 +448,9 @@ video-clipper/                     the skill
 |---|---|
 | Tested end to end | Windows 11, Python 3.14, Node.js 24, NVIDIA laptop GPU |
 | Tested sources | a Hindi webcam-panel/reaction video (2×2, 3- and 5-webcam layouts, phone memes, Hinglish captions); an English gameplay breakdown (letterboxed game footage, no facecam) |
-| Tested output | vertical and square; karaoke and pop captions; fire and gold colours; title top and split; progress bar; end card; .srt; loudness levelling; scheduling maths; upload dry run; source cleanup |
-| Not tested yet | macOS and Linux; real YouTube uploads; Whisper transcription; facecam over gameplay and two people in one camera shot on real footage; line and boxed captions; horizontal and portrait shapes; logo, background music, section downloads, translated (phrases) captions |
+| Tested output | vertical and square; karaoke and pop captions; fire and gold colours; title top and split; progress bar; end card; .srt; two-pass loudness levelling; voice boost; censor masking and bleeps; single-clip re-render after organize; scheduling maths and schedule checks; upload dry run; section downloads; local files; cleanup |
+| Tested on test footage only | speaker focus, splitting two people in one shot, keeping captions off faces, frame-accurate shot cuts |
+| Not tested yet | macOS and Linux; real YouTube uploads; Whisper transcription; facecam over gameplay and two people in one camera shot on real footage; line and boxed captions; horizontal and portrait shapes; logo, background music, translated (phrases) captions |
 
 Reports and fixes for the untested parts are very welcome.
 
@@ -453,7 +459,11 @@ Reports and fixes for the untested parts are very welcome.
 - **Faces** come from OpenCV's frontal detector. Side profiles, masks, heavy shadow and tiny faces can be missed,
   and the shot then falls back to the centre or the whole picture. Claude checks the contact sheets and fixes by
   hand.
-- **"Speaker" focus** means the biggest face. There is no active-speaker detection yet.
+- **"Speaker" focus** (`single_focus: speaker`) follows whoever's mouth is moving, from the picture alone (no
+  audio). It holds each person at least 2 s, so very quick back-and-forth stays on one face. A face turned away
+  or not detected can't be picked.
+- **Caption placement** (`caption_position: auto`) moves captions off faces the detector finds. Missed faces
+  (see above) can still be covered; the contact sheets show it.
 - **Live streams** are not clipped while live. Clip them once they've finished.
 - **Fonts**: the default is Montserrat (a Google Font), which looks the same on every OS. Google Fonts need
   internet at render time; offline, captions fall back to Segoe UI Black / Arial Black / Arial.

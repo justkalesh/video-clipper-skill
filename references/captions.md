@@ -30,9 +30,10 @@ One line per **transcript word in the clip's range** (markers like [Laughter] ex
 build_clip.py checks the count. On a mismatch it prints both columns (transcript word | your line) with
 times, so you can see where they drift. Usually a word was skipped or doubled.
 
-To get the words to transliterate, print the range from words.json:
+To get the words to transliterate, print the clip's range. This uses the same word window as the count
+check, so a file with one line per printed word always matches:
 ```bash
-python -c "import json,sys; sys.stdout.reconfigure(encoding='utf-8'); w=json.load(open('RUN/words.json',encoding='utf-8'))['words']; print('\n'.join(f\"{x['t']:.2f} {x['w']}\" for x in w if S<=x['t']<E and not x.get('m')))"
+python SKILL/scripts/build_clip.py --run RUN --start S --end E --list-words
 ```
 
 ### 3. A phrases file (`captions_N.phrases.txt`): translations
@@ -56,8 +57,9 @@ Write it the way people actually type it on Instagram and YouTube in India:
   writes them: "DigiYatra", "Kung Fu Panda").
 - Fix what auto captions mishear when the context makes it clear (in one test: "नकली एलएसटी" → nakli LSD,
   "शैल" → Shein, "काफी कुमकुम मूवी" → Kung Fu Panda movie). If unsure, keep the closest plain reading.
-- Keep slang and swearing as spoken unless `censor` is on. With `censor: mask`, write it masked in the tokens
-  (b***d).
+- Keep slang and swearing as spoken unless `censor` is on. With `censor` on, common English and Hindi swear
+  words are masked for you (f**k, c*****a). Write any other word you want censored masked in the tokens
+  (b***d); with `censor: bleep` every masked word is also beeped in the audio.
 - Punctuation drives the caption breaks: end sentences with . ? ! and use commas for pauses.
 
 ## Styles and their limits
@@ -68,5 +70,6 @@ Write it the way people actually type it on Instagram and YouTube in India:
 - **none**: no captions. Still write the tokens/phrases if you want an .srt (`export_srt`).
 - Markers: with `captions_when_silent: describe`, labels like [laughs] / [music] show during non-speech.
 
-Emoji (`emoji: light`): add at most one per clip section, as its own token after a punchline (😂, 🔥, 💀).
-Never add one mid-sentence.
+Emoji (`emoji: light`): add at most one per clip section, right after a punchline (😂, 🔥, 💀). A tokens file
+matches spoken words 1:1, so the emoji can't have a line of its own: put it on the punchline word's line
+(`lol 😂`, `*khatam 💀`). In a phrases file, add it at the end of the line. Never add one mid-sentence.

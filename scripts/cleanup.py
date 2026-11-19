@@ -5,7 +5,8 @@ Usage:
 
   full (default)  the long source video and its audio, the whole run folder (subtitles, transcripts, word timings,
                   signals, profile, overview/range frames, shot analysis, caption files, clip data), the check sheets
-                  and render results in OUT/_data, and the renderer's temporary files
+                  and render results in OUT/_data, and this run's renderer temp files
+                  (workspace/out/<id>, workspace/build/<id>; other runs' files are left alone)
   source          only the long source video and its audio
 
 Always kept: the clips with their covers and subtitles, posts.md, the post files in OUT/_data (needed to upload,
@@ -17,7 +18,7 @@ import json
 import shutil
 from pathlib import Path
 
-from common import DATA_DIR, PUBLIC, RUNS, WORKSPACE, utf8
+from common import DATA_DIR, PUBLIC, RUNS, WORKSPACE, slug, utf8
 
 
 def size_of(p):
@@ -60,9 +61,14 @@ def main():
             data = Path(a.out) / DATA_DIR
             freed += remove(data / "checks", deleted)
             freed += remove(data / "render_results.json", deleted)
-        # renderer leftovers: temporary renders/props and the bundle (rebuilt on every render anyway)
-        freed += remove(WORKSPACE / "out", deleted)
-        freed += remove(WORKSPACE / "build", deleted)
+        # this run's renderer leftovers (render.py names them by video id, or the output folder's name)
+        keys = {slug(a.video_id, 60)} | ({slug(Path(a.out).name, 60)} if a.out else set())
+        for parent in (WORKSPACE / "out", WORKSPACE / "build"):
+            for k in keys:
+                if k:
+                    freed += remove(parent / k, deleted)
+            if parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
 
     print(json.dumps({"video_id": a.video_id, "level": a.level, "freed_mb": round(freed / 1e6, 1),
                       "deleted": deleted}, ensure_ascii=False, indent=1))
