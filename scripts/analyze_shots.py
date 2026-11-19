@@ -166,10 +166,32 @@ def t_at(i):
     return A.offset + (times[i] if i < nframes else times[-1] + 1 / FPS)
 
 # ---------------------------------------------------------------- pass 2: shots
+# Two kinds of cut:
+#  - the picture changes a lot from one frame to the next (diff > 38): a camera cut, counted at once
+#  - the panel layout changes (a webcam joins, a screen share starts): counted only when the new layout holds for
+#    LAYOUT_HOLD_S. Moving dark content (game scenes, film, test patterns) can make the border detection flicker
+#    from frame to frame, which would otherwise chop a steady shot into pieces and make the crops jump.
+LAYOUT_HOLD_S = 0.5
+sigs = [signature(t) for t in tiles_per]
+hold = max(2, int(round(FPS * LAYOUT_HOLD_S)))
+
+
+def settled(i):
+    """The layout most frames show from i on, and whether it really is the layout from i on."""
+    win = sigs[i:i + hold]
+    top = max(set(win), key=win.count)
+    return top, win.count(sigs[i]) >= 0.8 * len(win)
+
+
 cuts = [0]
+cur = settled(0)[0]  # the layout of the shot we're in
 for i in range(1, nframes):
-    if signature(tiles_per[i]) != signature(tiles_per[i - 1]) or diffs[i] > 38:
+    if diffs[i] > 38:
         cuts.append(i)
+        cur = settled(i)[0]
+    elif sigs[i] != cur and settled(i)[1]:
+        cuts.append(i)
+        cur = sigs[i]
 cuts.append(nframes)
 shots, carry = [], None
 for a, b in zip(cuts, cuts[1:]):
