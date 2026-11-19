@@ -558,13 +558,16 @@ for a, b in shots:
         cw, ch = region[2] - region[0], region[3] - region[1]
         people = clusters_in(region, idx)
         facecam = None
-        if people:
-            p = people[0]
+        # a facecam is a small face that stays put in a corner. Check every face, not just the biggest: in games
+        # and films the characters' faces are often bigger than the streamer's
+        for p in people:
             rel_x, rel_y = (p["cx"] - region[0]) / cw, (p["cy"] - region[1]) / ch
             xs = [q[1] for q in p["pts"]]
-            static = (max(xs) - min(xs)) < cw * 0.03 if xs else True
+            # still = moves less than about its own size (a streamer shifting in their chair), unlike game characters
+            static = (max(xs) - min(xs)) < max(cw * 0.03, p["size"] * 0.8) if xs else True
             if p["size"] < cw * 0.11 and static and (rel_x < 0.3 or rel_x > 0.7) and (rel_y < 0.4 or rel_y > 0.6):
                 facecam = p
+                break
         if facecam is not None:
             kind = "content_face"
             if ANGLE == "single":

@@ -97,14 +97,21 @@ def cmd_subs(src, lang):
     manual = d.get("subtitles") or {}
     auto = d.get("automatic_captions") or {}
     spoken = lang or d.get("language") or ""
+    base = spoken.split("-")[0]  # the video says "en-US", the tracks say "en" / "en-orig"
+    origs = [k for k in auto if k.endswith("-orig")]
     pick = None
-    # creator-made subtitles in the spoken language beat auto captions; '-orig' is the untranslated auto track
+    # creator-made subtitles in the spoken language beat auto captions. '-orig' is the auto transcript of an audio
+    # track; a video with auto-dubbed audio has one per dub language, so only the spoken language's counts, and
+    # "any -orig" is used only when there is exactly one.
     for table, key, is_auto in (
         (manual, spoken, False),
-        (manual, next((k for k in manual if spoken and k.startswith(spoken + "-")), None), False),
+        (manual, base, False),
+        (manual, next((k for k in manual if base and k.startswith(base + "-")), None), False),
         (auto, f"{spoken}-orig", True),
-        (auto, next((k for k in auto if k.endswith("-orig")), None), True),
+        (auto, f"{base}-orig", True),
+        (auto, origs[0] if len(origs) == 1 else None, True),
         (auto, spoken, True),
+        (auto, base, True),
         (manual, "en", False),
         (auto, "en", True),
         (manual, next(iter(manual), None), False),

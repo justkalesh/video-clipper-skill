@@ -9,8 +9,12 @@ Writes:
   transcript.txt  ~15-second paragraphs with [mm:ss] stamps, for reading and picking moments
 
 Markers are non-speech tags in the subtitles such as [Laughter], [Applause], [Music], [हंसी].
+YouTube's auto captions also write HTML codes (&gt;&gt; = a new speaker, &nbsp;) and hide every swear as "[ __ ]".
+The codes are decoded and the >> speaker marks dropped; a hidden swear stays a spoken word, written "****" with
+"x": true, so word counts and timings still line up (captions show it masked; censor: bleep beeps it).
 """
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
@@ -49,6 +53,19 @@ def cues(text):
     return out
 
 
+HIDDEN = "****"  # a swear YouTube's auto captions replaced with [ __ ]
+
+
+def clean(w):
+    """Decode HTML codes; None for things that aren't words (the >> speaker mark)."""
+    w = html.unescape(w).replace("\xa0", " ").strip()
+    if not w or re.fullmatch(r">+", w):
+        return None
+    if re.fullmatch(r"\[\s*_+\s*\]", w):
+        return HIDDEN
+    return w
+
+
 def from_subs(path):
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     words = []
@@ -59,17 +76,21 @@ def from_subs(path):
             for line in lines:
                 if "<c>" not in line:
                     continue
+                line = re.sub(r"\[(?:\s|&nbsp;)*_+(?:\s|&nbsp;)*\]", "[__]", line)  # keep [ __ ] as one token
                 first = re.match(r"^([^<]+)", line)
-                if first and first.group(1).strip():
-                    words.append([start, first.group(1).strip()])
+                if first:
+                    for w in first.group(1).split():
+                        if clean(w):
+                            words.append([start, clean(w)])
                 for t, w in re.findall(r"<(\d+:\d+:[\d.]+)><c>([^<]*)</c>", line):
-                    if w.strip():
-                        words.append([parse_ts(t), w.strip()])
+                    if clean(w):
+                        words.append([parse_ts(t), clean(w)])
         # marker-only cues ([Music]) have no <c> tags
         for start, end, lines in cues(text):
-            body = " ".join(re.sub(r"<[^>]+>", "", l) for l in lines).strip()
+            body = html.unescape(" ".join(re.sub(r"<[^>]+>", "", l) for l in lines)).replace("\xa0", " ").strip()
             # rolling captions repeat a marker in the next cue(s): one per 3 s is the real event
-            if re.fullmatch(r"\[[^\]]+\]", body) and not any(abs(w[0] - start) < 3 and w[1] == body for w in words):
+            if (re.fullmatch(r"\[[^\]]+\]", body) and not re.fullmatch(r"\[\s*_+\s*\]", body)
+                    and not any(abs(w[0] - start) < 3 and w[1] == body for w in words)):
                 words.append([start, body])
     else:
         # creator-made subtitles: spread each cue's words over its duration, weighted by length
@@ -79,7 +100,8 @@ def from_subs(path):
             if not body or body == last:
                 continue
             last = body
-            toks = body.split()
+            body = re.sub(r"\[(?:\s|&nbsp;)*_+(?:\s|&nbsp;)*\]", "[__]", body)  # keep [ __ ] as one token
+            toks = [c for c in (clean(t) for t in body.split()) if c]
             total = sum(len(t) + 1 for t in toks)
             acc = 0
             for tok in toks:
@@ -90,7 +112,8 @@ def from_subs(path):
     for i, (t, w) in enumerate(words):
         nxt = words[i + 1][0] if i + 1 < len(words) else t + 0.6
         out.append({"t": round(t, 3), "e": round(min(nxt, t + 1.2), 3), "w": w,
-                    **({"m": True} if re.fullmatch(r"\[[^\]]+\]", w) else {})})
+                    **({"m": True} if re.fullmatch(r"\[[^\]]+\]", w) else {}),
+                    **({"x": True} if w == HIDDEN else {})})
     return out
 
 

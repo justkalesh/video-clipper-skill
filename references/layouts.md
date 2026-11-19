@@ -56,6 +56,16 @@ Each segment in the JSON looks like:
 - `track`: `[[seconds_from_shot_start, src_x, src_y], ...]` moves the crop over time. Delete it to freeze.
 - To merge two shots, delete one and stretch the other's `end`.
 - To force one view for a shot, keep one panel and set its box to the whole frame.
+- `faces`: `[[x, y, size], ...]` in output pixels; keep it in step with the panels you set (captions avoid them).
+
+**A video whose layout never changes** (a facecam always in the same box over gameplay, a fixed two-camera
+setup): measure the boxes once from a full-size frame, then give each clip one segment from its start to its end
+with those panels. Dark cutscenes and camera cuts can make the analyzer flip layouts every second or two; a fixed
+layout is steadier and still right. For facecam-over-gameplay in vertical shorts:
+- the gameplay as a centre crop (`cover`), trimmed to leave out the game's own subtitles and minimap (the
+  captions carry the speech)
+- the facecam cropped inside its box only, above any name banner
+- wide menus or maps as `contain` instead, so nothing important is cut off
 
 ## Known limits
 

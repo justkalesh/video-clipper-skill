@@ -55,7 +55,8 @@ def is_swear(w):
 
 
 def is_masked(w):
-    return bool(re.search(r"\w\*+", w))
+    """b***d, or "****" (a swear the platform's captions hid)."""
+    return bool(re.search(r"\w\*+", w) or re.fullmatch(r"\W*\*{3,}\W*", w))
 
 
 def mask(w):
